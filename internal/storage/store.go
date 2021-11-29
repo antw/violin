@@ -2,15 +2,15 @@ package storage
 
 import "sync"
 
-type store struct {
+type Store struct {
 	data sync.Map
 }
 
-func New() store {
-	return store{}
+func New() Store {
+	return Store{}
 }
 
-func (s *store) Get(key string) (value []byte, ok bool) {
+func (s *Store) Get(key string) (value []byte, ok bool) {
 	val, ok := s.data.Load(key)
 	if !ok {
 		return nil, false
@@ -19,6 +19,6 @@ func (s *store) Get(key string) (value []byte, ok bool) {
 	return val.([]byte), true
 }
 
-func (s *store) Set(key string, value []byte) {
+func (s *Store) Set(key string, value []byte) {
 	s.data.Store(key, value)
 }

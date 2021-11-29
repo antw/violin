@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+option go_package = "github.com/antw/violin/api";
+
+service Register {
+	rpc Get(GetRequest) returns (GetResponse) {}
+	rpc Set(SetRequest) returns (SetResponse) {}
+}
+
+message KV {
+  string key = 1;
+  bytes value = 2;
+}
+
+message GetRequest {
+  string key = 1;
+}
+
+message GetResponse {
+  KV register = 1;
+}
+
+message SetRequest {
+  KV register = 1;
+}
+
+message SetResponse {}
