@@ -18,7 +18,7 @@ func setupTest(t *testing.T) (*grpc.Server, api.RegisterClient, func()) {
 	listener, err := net.Listen("tcp", ":0")
 	require.NoError(t, err)
 
-	store := storage.New()
+	store := storage.NewStore()
 	server := New(&store)
 
 	go func() {

@@ -4,6 +4,7 @@ import (
 	"log"
 	"net"
 
+	"github.com/hashicorp/raft"
 	"github.com/hashicorp/serf/serf"
 )
 
@@ -107,7 +108,10 @@ func (m *Membership) Leave() error {
 }
 
 func (m *Membership) logError(err error, msg string, member serf.Member) {
-	log.Printf("[ERR] %s %s: %s", member.Name, msg, err)
+	// For now ignore ErrNotLeader. Reconsider when adding proper logging.
+	if err != raft.ErrNotLeader {
+		log.Printf("[ERR] %s %s: %s", member.Name, msg, err)
+	}
 }
 
 type Config struct {

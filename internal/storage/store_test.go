@@ -7,7 +7,7 @@ import (
 )
 
 func TestSetGet(t *testing.T) {
-	store := New()
+	store := NewStore()
 
 	store.Set("foo", []byte("bar"))
 
@@ -17,7 +17,7 @@ func TestSetGet(t *testing.T) {
 }
 
 func TestEmpty(t *testing.T) {
-	store := New()
+	store := NewStore()
 
 	_, ok := store.Get("foo")
 	require.False(t, ok)

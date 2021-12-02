@@ -6,7 +6,7 @@ type Store struct {
 	data sync.Map
 }
 
-func New() Store {
+func NewStore() Store {
 	return Store{}
 }
 
