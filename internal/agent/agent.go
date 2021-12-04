@@ -112,7 +112,7 @@ func (a *Agent) setupStore() error {
 		err = a.store.WaitForLeader(3 * time.Second)
 	}
 
-	return nil
+	return err
 }
 
 // setupServer configures the server and starts a listener.
