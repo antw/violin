@@ -260,12 +260,15 @@ func (f *fsm) Apply(record *raft.Log) interface{} {
 		return err
 	}
 
-	f.store.Set(req.GetRegister().GetKey(), req.GetRegister().GetValue())
+	err = f.store.Set(req.GetRegister().GetKey(), req.GetRegister().GetValue())
+	if err != nil {
+		return err
+	}
 
 	return &api.SetResponse{}
 }
 
-// Snapshot returns an snapshot which represents the store at a point in time.
+// Snapshot returns a snapshot which represents the store at a point in time.
 //
 // For now this is encoded as JSON, but there are likely more efficient ways to encode this data
 // (using api.KV, for example).
@@ -299,7 +302,10 @@ func (f *fsm) Restore(r io.ReadCloser) error {
 	}
 
 	for key, value := range data {
-		f.store.Set(key, value)
+		err = f.store.Set(key, value)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
