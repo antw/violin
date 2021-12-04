@@ -7,15 +7,19 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/antw/violin/api"
-	"github.com/antw/violin/internal/storage"
 )
+
+type store interface {
+	Get(key string) (value []byte, ok bool)
+	Set(key string, value []byte) error
+}
 
 type server struct {
 	api.UnimplementedRegisterServer
-	store *storage.Store
+	store store
 }
 
-func New(store *storage.Store, grpcOpts ...grpc.ServerOption) *grpc.Server {
+func New(store store, grpcOpts ...grpc.ServerOption) *grpc.Server {
 	srv := &server{store: store}
 
 	grpcSrv := grpc.NewServer(grpcOpts...)

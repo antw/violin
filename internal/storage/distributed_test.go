@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/antw/violin/api"
 	"github.com/hashicorp/raft"
 	"github.com/phayes/freeport"
 	"github.com/stretchr/testify/require"
@@ -62,23 +61,26 @@ func TestMultipleNodes(t *testing.T) {
 		stores = append(stores, store)
 	}
 
-	kvs := []*api.KV{
-		{Key: "foo", Value: []byte("bar")},
-		{Key: "baz", Value: []byte("qux")},
+	kvs := []struct {
+		key   string
+		value []byte
+	}{
+		{key: "foo", value: []byte("bar")},
+		{key: "baz", value: []byte("qux")},
 	}
 	for _, kv := range kvs {
-		err := stores[0].Set(kv)
+		err := stores[0].Set(kv.key, kv.value)
 		require.NoError(t, err)
 
 		require.Eventually(t, func() bool {
 			for j := 0; j < nodeCount; j++ {
-				value, err := stores[j].Get(kv.Key)
-				if err != nil {
+				value, ok := stores[j].Get(kv.key)
+				if !ok {
 					// Ignore missing keys which haven't been replicated yet.
 					return false
 				}
 
-				if kv.Key != value.GetKey() && !bytes.Equal(kv.Value, value.GetValue()) {
+				if !bytes.Equal(kv.value, value) {
 					return false
 				}
 			}
@@ -92,18 +94,18 @@ func TestMultipleNodes(t *testing.T) {
 
 	time.Sleep(50 * time.Millisecond)
 
-	err = stores[0].Set(&api.KV{Key: "foo2", Value: []byte("bar2")})
+	err = stores[0].Set("foo2", []byte("bar2"))
 	require.NoError(t, err)
 
 	time.Sleep(50 * time.Millisecond)
 
 	// Test that disconnected node doesn't receive the KV.
-	kv, err := stores[1].Get("foo2")
-	require.Error(t, err)
-	require.Nil(t, kv)
+	value, ok := stores[1].Get("foo2")
+	require.False(t, ok)
+	require.Nil(t, value)
 
 	// Test that the node which is still connected gets the KV.
-	kv, err = stores[2].Get("foo2")
-	require.NoError(t, err)
-	require.Equal(t, []byte("bar2"), kv.Value)
+	value, ok = stores[2].Get("foo2")
+	require.True(t, ok)
+	require.Equal(t, []byte("bar2"), value)
 }

@@ -19,10 +19,10 @@ func setupTest(t *testing.T) (*grpc.Server, api.RegisterClient, func()) {
 	require.NoError(t, err)
 
 	store := storage.NewStore()
-	server := New(&store)
+	server := New(store)
 
 	go func() {
-		server.Serve(listener)
+		_ = server.Serve(listener)
 	}()
 
 	clientConn, err := grpc.Dial(listener.Addr().String(), grpc.WithInsecure())

@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -10,10 +11,21 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/antw/violin/api"
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/antw/violin/api"
+)
+
+const (
+	// RaftRPC is a value used to indicate to cmux that a connection is intended for Raft RPC rather
+	// than the gRPC server.
+	RaftRPC byte = 1
+)
+
+var (
+	ErrNotRaftRPC = errors.New("not a Raft RPC connection")
 )
 
 type Config struct {
@@ -31,10 +43,8 @@ type DistributedStore struct {
 }
 
 func NewDistributedStore(dataDir string, config Config) (*DistributedStore, error) {
-	store := NewStore()
-
 	ds := &DistributedStore{
-		store:  &store,
+		store:  NewStore(),
 		config: config,
 	}
 
@@ -130,8 +140,8 @@ func (ds *DistributedStore) setupRaft(dataDir string) error {
 }
 
 // Set appends the KV to the Raft log.
-func (ds *DistributedStore) Set(kv *api.KV) error {
-	_, err := ds.apply(&api.SetRequest{Register: kv})
+func (ds *DistributedStore) Set(key string, value []byte) error {
+	_, err := ds.apply(&api.SetRequest{Register: &api.KV{Key: key, Value: value}})
 	return err
 }
 
@@ -165,16 +175,8 @@ func (ds *DistributedStore) apply(req proto.Message) (interface{}, error) {
 }
 
 // Get reads the value associated with key and returns a KV record.
-func (ds *DistributedStore) Get(key string) (*api.KV, error) {
-	value, ok := ds.store.Get(key)
-	if !ok {
-		return nil, fmt.Errorf("no such key: %s", key)
-	}
-
-	return &api.KV{
-		Key:   key,
-		Value: value,
-	}, nil
+func (ds *DistributedStore) Get(key string) (value []byte, ok bool) {
+	return ds.store.Get(key)
 }
 
 // Join adds a node to the Raft cluster.
@@ -268,18 +270,18 @@ func (f *fsm) Apply(record *raft.Log) interface{} {
 // For now this is encoded as JSON, but there are likely more efficient ways to encode this data
 // (using api.KV, for example).
 func (f *fsm) Snapshot() (raft.FSMSnapshot, error) {
-	var encodable map[string][]byte
+	var data map[string][]byte
 
 	// Convert the sync.Map into a map which can be encoded.
 	f.store.data.Range(func(key, value interface{}) bool {
-		if bytes, ok := value.([]byte); ok {
-			encodable[fmt.Sprint(key)] = bytes
+		if valueBytes, ok := value.([]byte); ok {
+			data[fmt.Sprint(key)] = valueBytes
 		}
 		return true
 	})
 
 	buf := new(bytes.Buffer)
-	err := json.NewEncoder(buf).Encode(encodable)
+	err := json.NewEncoder(buf).Encode(data)
 	if err != nil {
 		return nil, err
 	}
@@ -291,7 +293,7 @@ func (f *fsm) Snapshot() (raft.FSMSnapshot, error) {
 func (f *fsm) Restore(r io.ReadCloser) error {
 	var data map[string][]byte
 
-	err := json.NewDecoder(r).Decode(data)
+	err := json.NewDecoder(r).Decode(&data)
 	if err != nil {
 		return err
 	}
@@ -332,11 +334,21 @@ type StreamLayer struct {
 	ln net.Listener
 }
 
+func NewStreamLayer(ln net.Listener) *StreamLayer {
+	return &StreamLayer{ln: ln}
+}
+
 // Dial establishes outgoing connections to other nodes in the Raft cluster.
 func (s *StreamLayer) Dial(addr raft.ServerAddress, timeout time.Duration) (net.Conn, error) {
 	dialer := &net.Dialer{Timeout: timeout}
 
 	conn, err := dialer.Dial("tcp", string(addr))
+	if err != nil {
+		return nil, err
+	}
+
+	// Identify to cmux that this is a Raft RPC connection.
+	_, err = conn.Write([]byte{RaftRPC})
 	if err != nil {
 		return nil, err
 	}
@@ -351,6 +363,16 @@ func (s *StreamLayer) Accept() (net.Conn, error) {
 		return nil, err
 	}
 
+	b := make([]byte, 1)
+	_, err = conn.Read(b)
+	if err != nil {
+		return nil, err
+	}
+
+	if bytes.Compare(b, []byte{RaftRPC}) != 0 {
+		return nil, ErrNotRaftRPC
+	}
+
 	return conn, nil
 }
 
@@ -361,72 +383,3 @@ func (s *StreamLayer) Close() error {
 func (s *StreamLayer) Addr() net.Addr {
 	return s.ln.Addr()
 }
-
-// var _ raft.StreamLayer = (*StreamLayer)(nil)
-
-// type StreamLayer struct {
-// 	ln              net.Listener
-// 	serverTLSConfig *tls.Config
-// 	peerTLSConfig   *tls.Config
-// }
-
-// func NewStreamLayer(
-// 	ln net.Listener,
-// 	serverTLSConfig,
-// 	peerTLSConfig *tls.Config,
-// ) *StreamLayer {
-// 	return &StreamLayer{
-// 		ln:              ln,
-// 		serverTLSConfig: serverTLSConfig,
-// 		peerTLSConfig:   peerTLSConfig,
-// 	}
-// }
-
-// const RaftRPC = 1
-
-// func (s *StreamLayer) Dial(
-// 	addr raft.ServerAddress,
-// 	timeout time.Duration,
-// ) (net.Conn, error) {
-// 	dialer := &net.Dialer{Timeout: timeout}
-// 	var conn, err = dialer.Dial("tcp", string(addr))
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	// identify to mux this is a raft rpc
-// 	_, err = conn.Write([]byte{byte(RaftRPC)})
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	if s.peerTLSConfig != nil {
-// 		conn = tls.Client(conn, s.peerTLSConfig)
-// 	}
-// 	return conn, err
-// }
-
-// func (s *StreamLayer) Accept() (net.Conn, error) {
-// 	conn, err := s.ln.Accept()
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	b := make([]byte, 1)
-// 	_, err = conn.Read(b)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	if bytes.Compare([]byte{byte(RaftRPC)}, b) != 0 {
-// 		return nil, fmt.Errorf("not a raft rpc")
-// 	}
-// 	if s.serverTLSConfig != nil {
-// 		return tls.Server(conn, s.serverTLSConfig), nil
-// 	}
-// 	return conn, nil
-// }
-
-// func (s *StreamLayer) Close() error {
-// 	return s.ln.Close()
-// }
-
-// func (s *StreamLayer) Addr() net.Addr {
-// 	return s.ln.Addr()
-// }
