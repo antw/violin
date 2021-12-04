@@ -8,12 +8,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/antw/violin/internal/server"
 	"github.com/hashicorp/raft"
 	"github.com/soheilhy/cmux"
 	"google.golang.org/grpc"
 
 	"github.com/antw/violin/internal/discovery"
+	"github.com/antw/violin/internal/server"
 	"github.com/antw/violin/internal/storage"
 )
 
@@ -93,7 +93,7 @@ func (a *Agent) setupStore() error {
 		if _, err := reader.Read(b); err != nil {
 			return false
 		}
-		return bytes.Compare(b, []byte{storage.RaftRPC}) == 0
+		return bytes.Equal(b, []byte{storage.RaftRPC})
 	})
 
 	storeConfig := storage.Config{}
