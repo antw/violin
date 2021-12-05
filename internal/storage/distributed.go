@@ -375,7 +375,7 @@ func (s *StreamLayer) Accept() (net.Conn, error) {
 		return nil, err
 	}
 
-	if bytes.Compare(b, []byte{RaftRPC}) != 0 {
+	if bytes.Equal(b, []byte{RaftRPC}) {
 		return nil, ErrNotRaftRPC
 	}
 

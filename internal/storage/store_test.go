@@ -9,7 +9,8 @@ import (
 func TestSetGet(t *testing.T) {
 	store := NewStore()
 
-	store.Set("foo", []byte("bar"))
+	err := store.Set("foo", []byte("bar"))
+	require.NoError(t, err)
 
 	value, ok := store.Get("foo")
 	require.True(t, ok)
