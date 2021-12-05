@@ -43,6 +43,9 @@ func (s server) Get(ctx context.Context, req *api.GetRequest) (*api.GetResponse,
 }
 
 func (s server) Set(ctx context.Context, req *api.SetRequest) (*api.SetResponse, error) {
-	s.store.Set(req.GetRegister().GetKey(), req.GetRegister().GetValue())
+	if err := s.store.Set(req.GetRegister().GetKey(), req.GetRegister().GetValue()); err != nil {
+		return nil, err
+	}
+
 	return &api.SetResponse{}, nil
 }
