@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -126,14 +127,18 @@ func (ds *DistributedStore) setupRaft(dataDir string) error {
 		return err
 	}
 
-	if ds.config.Raft.Bootstrap && !hasState {
-		config := raft.Configuration{
-			Servers: []raft.Server{{
-				ID:      config.LocalID,
-				Address: transport.LocalAddr(),
-			}},
+	if ds.config.Raft.Bootstrap {
+		if !hasState {
+			config := raft.Configuration{
+				Servers: []raft.Server{{
+					ID:      config.LocalID,
+					Address: transport.LocalAddr(),
+				}},
+			}
+			err = ds.raft.BootstrapCluster(config).Error()
+		} else {
+			log.Println("     [WARN]  Ignoring bootstrap request: server has state")
 		}
-		err = ds.raft.BootstrapCluster(config).Error()
 	}
 
 	return err
