@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"fmt"
 
 	"google.golang.org/grpc"
 
@@ -32,7 +31,7 @@ func (s server) Get(ctx context.Context, req *api.GetRequest) (*api.GetResponse,
 	value, ok := s.store.Get(req.GetKey())
 
 	if !ok {
-		return nil, fmt.Errorf("key not found: %s", req.Key)
+		return nil, api.ErrNoSuchKey{Key: req.Key}
 	}
 
 	return &api.GetResponse{

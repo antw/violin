@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/status"
 
 	"github.com/antw/violin/api"
 	"github.com/antw/violin/internal/storage"
@@ -60,6 +61,11 @@ func TestGetNotFound(t *testing.T) {
 	_, client, teardown := setupTest(t)
 	defer teardown()
 
-	_, err := client.Get(ctx, &api.GetRequest{Key: "key"})
-	require.Errorf(t, err, "key not found: key")
+	value, err := client.Get(ctx, &api.GetRequest{Key: "key"})
+	require.Nil(t, value)
+
+	got := status.Code(err)
+	want := status.Code(api.ErrNoSuchKey{}.GRPCStatus().Err())
+
+	require.Equal(t, want, got)
 }
