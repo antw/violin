@@ -67,6 +67,10 @@ var serverCmd = &cobra.Command{
 		rpcPort := viper.GetInt("rpc-port")
 		startAddrs := viper.GetStringSlice("start-addrs")
 
+		if dataDir == "" {
+			panic(fmt.Errorf("data-dir is required\n"))
+		}
+
 		fmt.Println("Starting server...")
 
 		if nodeName == "" {
