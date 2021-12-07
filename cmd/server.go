@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -14,7 +13,8 @@ import (
 
 func init() {
 	if err := setupFlags(); err != nil {
-		log.Fatal(err)
+		fmt.Println(err)
+		os.Exit(1)
 	}
 
 	rootCmd.AddCommand(serverCmd)
@@ -23,7 +23,6 @@ func init() {
 func setupFlags() error {
 	serverCmd.Flags().String("bind", "127.0.0.1:5000", "Bind address for Serf (service discovery)")
 	serverCmd.Flags().Bool("bootstrap", false, "Bootstrap the cluster")
-	serverCmd.Flags().String("config", "", "Path to a config file")
 	serverCmd.Flags().String("data-dir", "", "Path in which to store log and Raft data")
 	serverCmd.Flags().String("node-name", "", "A unique name for the node in the cluster")
 	serverCmd.Flags().Int("rpc-port", 5001, "Port for RPC and Raft connections")
@@ -38,27 +37,7 @@ var serverCmd = &cobra.Command{
 	Long: `A longer description that spans multiple lines and likely contains
 				examples and usage of using your application.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		configPath, _ := cmd.Flags().GetString("config")
-
-		if configPath != "" {
-			viper.SetConfigFile(configPath)
-		} else {
-			viper.SetConfigName("server")
-			viper.SetConfigType("toml")
-			viper.AddConfigPath("/etc/violin/")
-			viper.AddConfigPath("$HOME/.violin")
-			viper.AddConfigPath(".")
-		}
-
-		if err := viper.ReadInConfig(); err != nil {
-			if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-				if configPath != "" {
-					panic(fmt.Errorf("config file %s not found\n", configPath))
-				}
-			} else {
-				panic(fmt.Errorf("error in config file: %w\n", err))
-			}
-		}
+		ReadViolinConfig(cmd)
 
 		bindAddr := viper.GetString("bind")
 		bootstrap := viper.GetBool("bootstrap")
@@ -68,7 +47,8 @@ var serverCmd = &cobra.Command{
 		startAddrs := viper.GetStringSlice("start-addrs")
 
 		if dataDir == "" {
-			panic(fmt.Errorf("data-dir is required\n"))
+			fmt.Println("data-dir is required")
+			os.Exit(1)
 		}
 
 		fmt.Println("Starting server...")
