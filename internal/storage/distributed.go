@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	// RaftRPC is a value used to indicate to cmux that a connection is intended for Raft RPC rather
+	// RaftRPC is a Value used to indicate to cmux that a connection is intended for Raft RPC rather
 	// than the gRPC server.
 	RaftRPC byte = 1
 )
@@ -174,7 +174,7 @@ func (ds *DistributedStore) apply(req proto.Message) (interface{}, error) {
 	return res, nil
 }
 
-// Get reads the value associated with key and returns a KV record.
+// Get reads the Value associated with Key and returns a KV record.
 func (ds *DistributedStore) Get(key string) (value []byte, ok bool) {
 	return ds.store.Get(key)
 }
