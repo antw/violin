@@ -24,18 +24,18 @@ func TestEmpty(t *testing.T) {
 	require.False(t, ok)
 }
 
-func TestBetween(t *testing.T) {
+func TestAscend(t *testing.T) {
 	store := NewStore()
 
 	kvs := []struct {
 		key   string
 		value []byte
 	}{
-		{key: "a", value: []byte("a")},
-		{key: "b", value: []byte("b")},
-		{key: "b1", value: []byte("b1")},
-		{key: "c", value: []byte("c")},
-		{key: "d", value: []byte("d")},
+		{key: "c", value: []byte("c val")},
+		{key: "b", value: []byte("b val")},
+		{key: "b1", value: []byte("b1 val")},
+		{key: "d", value: []byte("d val")},
+		{key: "a", value: []byte("a val")},
 	}
 
 	for _, kv := range kvs {
@@ -43,10 +43,41 @@ func TestBetween(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	pairs := store.Between("b", "c")
+	index := 0
+	expected := []string{"a", "b", "b1", "c", "d"}
+
+	store.Ascend(func(key string, value []byte) bool {
+		require.Equal(t, expected[index], key)
+		require.Equal(t, []byte(expected[index]+" val"), value)
+
+		index += 1
+		return true
+	})
+}
+
+func TestBetween(t *testing.T) {
+	store := NewStore()
+
+	kvs := []struct {
+		key   string
+		value []byte
+	}{
+		{key: "a", value: []byte("a val")},
+		{key: "b", value: []byte("b val")},
+		{key: "b1", value: []byte("b1 val")},
+		{key: "c", value: []byte("c val")},
+		{key: "d", value: []byte("d val")},
+	}
+
+	for _, kv := range kvs {
+		err := store.Set(kv.key, kv.value)
+		require.NoError(t, err)
+	}
+
+	pairs := store.Between("b", "d")
 	require.Equal(t, 3, len(pairs))
 
-	require.Equal(t, Pair{Key: "b", Value: []byte("b")}, pairs[0])
-	require.Equal(t, Pair{Key: "b1", Value: []byte("b1")}, pairs[1])
-	require.Equal(t, Pair{Key: "c", Value: []byte("c")}, pairs[2])
+	require.Equal(t, Pair{Key: "b", Value: []byte("b val")}, pairs[0])
+	require.Equal(t, Pair{Key: "b1", Value: []byte("b1 val")}, pairs[1])
+	require.Equal(t, Pair{Key: "c", Value: []byte("c val")}, pairs[2])
 }
