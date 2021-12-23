@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+option go_package = "github.com/antw/violin/internal/sstable";
+
+message KeyValue {
+  string key = 1;
+  bytes value = 2;
+}

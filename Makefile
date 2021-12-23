@@ -1,6 +1,6 @@
 .PHONY: compile
 compile:
-	protoc **/*.proto \
+	protoc $(shell find . -type f -name *.proto) \
 		--go_out=. \
 		--go_opt=paths=source_relative \
 		--go-grpc_out=. \
