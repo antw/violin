@@ -18,7 +18,7 @@ func TestIndex(t *testing.T) {
 
 	pairs := []struct {
 		key string
-		pos uint64
+		pos uint32
 	}{
 		{"foo", 0},
 		{"bar", 10},
@@ -58,5 +58,5 @@ func TestIndexNoKey(t *testing.T) {
 
 	pos, ok := index.get("not-exist")
 	require.False(t, ok)
-	require.Equal(t, uint64(0), pos)
+	require.Equal(t, uint32(0), pos)
 }
