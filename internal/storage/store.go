@@ -22,6 +22,20 @@ func NewStore() *Store {
 	return &Store{index: *btree.New(2)}
 }
 
+// NewStoreWithData creates a new store with the given data. Useful for testing.
+func NewStoreWithData(data map[string][]byte) (*Store, error) {
+	s := NewStore()
+
+	for k, v := range data {
+		err := s.Set(k, v)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return s, nil
+}
+
 func (s *Store) Get(key string) (value []byte, ok bool) {
 	val, ok := s.data.Load(key)
 	if !ok {

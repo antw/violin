@@ -25,23 +25,14 @@ func TestEmpty(t *testing.T) {
 }
 
 func TestAscend(t *testing.T) {
-	store := NewStore()
-
-	kvs := []struct {
-		key   string
-		value []byte
-	}{
-		{key: "c", value: []byte("c val")},
-		{key: "b", value: []byte("b val")},
-		{key: "b1", value: []byte("b1 val")},
-		{key: "d", value: []byte("d val")},
-		{key: "a", value: []byte("a val")},
-	}
-
-	for _, kv := range kvs {
-		err := store.Set(kv.key, kv.value)
-		require.NoError(t, err)
-	}
+	store, err := NewStoreWithData(map[string][]byte{
+		"c":  []byte("c val"),
+		"b":  []byte("b val"),
+		"b1": []byte("b1 val"),
+		"d":  []byte("d val"),
+		"a":  []byte("a val"),
+	})
+	require.NoError(t, err)
 
 	index := 0
 	expected := []string{"a", "b", "b1", "c", "d"}
@@ -56,23 +47,14 @@ func TestAscend(t *testing.T) {
 }
 
 func TestBetween(t *testing.T) {
-	store := NewStore()
-
-	kvs := []struct {
-		key   string
-		value []byte
-	}{
-		{key: "a", value: []byte("a val")},
-		{key: "b", value: []byte("b val")},
-		{key: "b1", value: []byte("b1 val")},
-		{key: "c", value: []byte("c val")},
-		{key: "d", value: []byte("d val")},
-	}
-
-	for _, kv := range kvs {
-		err := store.Set(kv.key, kv.value)
-		require.NoError(t, err)
-	}
+	store, err := NewStoreWithData(map[string][]byte{
+		"a":  []byte("a val"),
+		"b":  []byte("b val"),
+		"b1": []byte("b1 val"),
+		"c":  []byte("c val"),
+		"d":  []byte("d val"),
+	})
+	require.NoError(t, err)
 
 	pairs := store.Between("b", "d")
 	require.Equal(t, 3, len(pairs))
