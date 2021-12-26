@@ -27,14 +27,10 @@ func (a *aggregator) Ascend(iterator func(key string, value []byte) bool) {
 		item := heap.Pop(pq).(*mergeItem)
 		conflict := false
 
-		// Check that no later iterator has a conflicting key. This is surely not the optimal way
-		// of doing this... perhaps a separate priority queue data structure could be used, wrapping
-		// around mergeHeap, that would handle de-duplication when adding new items?
-		for _, other := range *pq {
-			if other.kv.Key == item.kv.Key && other.iterIndex > item.iterIndex {
-				conflict = true
-				break
-			}
+		// Check that no later iterator has a conflicting key. If a conflict is found it will always
+		// be the next element in the heap.
+		if next := pq.Peek(); next != nil && next.kv.Key == item.kv.Key {
+			conflict = true
 		}
 
 		if !conflict && !iterator(item.kv.Key, item.kv.Value) {
@@ -82,4 +78,14 @@ func (h *mergeHeap) Pop() interface{} {
 	*h = old[0 : n-1]
 
 	return x
+}
+
+func (h *mergeHeap) Peek() *mergeItem {
+	hp := *h
+
+	if len(hp) == 0 {
+		return nil
+	}
+
+	return hp[0]
 }
