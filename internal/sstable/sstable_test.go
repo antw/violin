@@ -91,6 +91,64 @@ func TestSSTable(t *testing.T) {
 
 // -------------------------------------------------------------------------------------------------
 
+func TestOpenSSTable(t *testing.T) {
+	dataFile, indexFile, teardown := createTableFiles(t, "sstable_open")
+	defer teardown()
+
+	_, err := OpenSSTable(dataFile.Name(), indexFile.Name())
+
+	require.NoError(t, err)
+}
+
+func TestOpenSSTableNotReadable(t *testing.T) {
+	dataFile, indexFile, teardown := createTableFiles(t, "sstable_open_not_readable")
+	defer teardown()
+
+	err := os.Chmod(dataFile.Name(), 0200) // -w- --- ---
+	require.NoError(t, err)
+
+	_, err = OpenSSTable(dataFile.Name(), indexFile.Name())
+
+	require.ErrorIs(t, err, os.ErrPermission)
+}
+
+func TestOpenSSTableNoData(t *testing.T) {
+	indexFile, teardown := createTableFile(t, "sstable_open_no_data")
+	defer teardown()
+
+	_, err := OpenSSTable(indexFile.Name()+"nope", indexFile.Name())
+
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestOpenSSTableNoIndex(t *testing.T) {
+	dataFile, teardown := createTableFile(t, "sstable_open_no_index")
+	defer teardown()
+
+	_, err := OpenSSTable(dataFile.Name(), dataFile.Name()+"nope")
+
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
+// -------------------------------------------------------------------------------------------------
+
+func createTableFile(t *testing.T, pattern string) (*os.File, func()) {
+	file, err := os.CreateTemp("", pattern)
+	require.NoError(t, err)
+
+	return file, func() { _ = os.Remove(file.Name()) }
+}
+
+func createTableFiles(t *testing.T, pattern string) (*os.File, *os.File, func()) {
+	data, dTeardown := createTableFile(t, pattern+"_data")
+	index, iTeardown := createTableFile(t, pattern+"_index")
+
+	return data, index, func() {
+		dTeardown()
+		iTeardown()
+	}
+}
+
 func createWriter(t *testing.T, source SerializableStore) (Writer, func()) {
 	os.TempDir()
 	dataFile, err := os.CreateTemp("", "sstable_writer_data_test")
@@ -136,18 +194,9 @@ func createSSTable(t *testing.T) (*SSTable, func()) {
 }
 
 // openSSTable opens an existing SSTable using paths to the data and index.
-func openSSTable(t *testing.T, kvPath, indexPath string) (*SSTable, func()) {
-	kvFile, err := os.Open(kvPath)
+func openSSTable(t *testing.T, dataPath, indexPath string) (*SSTable, func()) {
+	table, err := OpenSSTable(dataPath, indexPath)
 	require.NoError(t, err)
 
-	indexFile, err := os.Open(indexPath)
-	require.NoError(t, err)
-
-	sstable, err := NewSSTable(kvFile, indexFile)
-	require.NoError(t, err)
-
-	return sstable, func() {
-		_ = kvFile.Close()
-		_ = indexFile.Close()
-	}
+	return table, func() { _ = table.Close() }
 }

@@ -13,11 +13,17 @@ var (
 	offsetSize = 4
 )
 
+// SSTable implements a sorted string table. SSTs are immutable and populated by values stored in
+// a data file. The data file is a sequence of key-value pairs, where each key appears in
+// lexographic order. An index file provides a mapping from keys to the position in the data file
+// where the key-value pair is stored.
 type SSTable struct {
 	file  *os.File
 	index *index
 }
 
+// NewSSTable rakes a reference to data and index os.File objects and returns an SSTable
+// representing the data.
 func NewSSTable(kvFile, indexFile *os.File) (*SSTable, error) {
 	index, err := newIndex(indexFile)
 	if err != nil {
@@ -28,6 +34,24 @@ func NewSSTable(kvFile, indexFile *os.File) (*SSTable, error) {
 		file:  kvFile,
 		index: index,
 	}, nil
+}
+
+// OpenSSTable takes a path to data and index files, and returns an SSTable representing the data.
+func OpenSSTable(dataPath, indexPath string) (*SSTable, error) {
+	dataFile, err := os.Open(dataPath)
+	if err != nil {
+		return nil, err
+	}
+
+	indexFile, err := os.Open(indexPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Index file is not needed once it has been read.
+	defer func() { _ = indexFile.Close() }()
+
+	return NewSSTable(dataFile, indexFile)
 }
 
 // TODO This needs to be able to return an error instead of just an ok bool
