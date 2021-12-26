@@ -37,6 +37,41 @@ func TestWriter(t *testing.T) {
 	require.True(t, indexStat.Size() > 0, "expected index file size to be non-zero")
 }
 
+func TestWriterWithAggregator(t *testing.T) {
+	first, err := storage.NewStoreWithData(map[string][]byte{
+		"a": []byte("one"),
+		"c": []byte("three"),
+	})
+	require.NoError(t, err)
+
+	second, err := storage.NewStoreWithData(map[string][]byte{
+		"b": []byte("two"),
+	})
+	require.NoError(t, err)
+
+	agg := aggregator{stores: []SerializableStore{first, second}}
+	writer, writerTeardown := createWriter(t, &agg)
+	defer writerTeardown()
+
+	err = writer.Write()
+	require.NoError(t, err)
+
+	table, readerTeardown := openSSTable(t, writer.kvFile.Name(), writer.indexFile.Name())
+	defer readerTeardown()
+
+	a, ok := table.Get("a")
+	require.True(t, ok)
+	require.Equal(t, []byte("one"), a)
+
+	b, ok := table.Get("b")
+	require.True(t, ok)
+	require.Equal(t, []byte("two"), b)
+
+	c, ok := table.Get("c")
+	require.True(t, ok)
+	require.Equal(t, []byte("three"), c)
+}
+
 func TestSSTable(t *testing.T) {
 	sstable, teardown := createSSTable(t)
 	defer teardown()
@@ -88,18 +123,31 @@ func createSSTable(t *testing.T) (*SSTable, func()) {
 	err = store.Set("baz", []byte("qux"))
 	require.NoError(t, err)
 
-	writer, teardown := createWriter(t, store)
+	writer, writerTeardown := createWriter(t, store)
 	err = writer.Write()
 	require.NoError(t, err)
 
-	kvFile, err := os.Open(writer.kvFile.Name())
+	table, readerTeardown := openSSTable(t, writer.kvFile.Name(), writer.indexFile.Name())
+
+	return table, func() {
+		writerTeardown()
+		readerTeardown()
+	}
+}
+
+// openSSTable opens an existing SSTable using paths to the data and index.
+func openSSTable(t *testing.T, kvPath, indexPath string) (*SSTable, func()) {
+	kvFile, err := os.Open(kvPath)
 	require.NoError(t, err)
 
-	indexFile, err := os.Open(writer.indexFile.Name())
+	indexFile, err := os.Open(indexPath)
 	require.NoError(t, err)
 
 	sstable, err := NewSSTable(kvFile, indexFile)
 	require.NoError(t, err)
 
-	return sstable, teardown
+	return sstable, func() {
+		_ = kvFile.Close()
+		_ = indexFile.Close()
+	}
 }
