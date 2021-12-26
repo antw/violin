@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"os"
 
+	"github.com/antw/violin/internal/storage"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -21,6 +22,8 @@ type SSTable struct {
 	file  *os.File
 	index *index
 }
+
+var _ storage.GettableStore = (*SSTable)(nil)
 
 // NewSSTable rakes a reference to data and index os.File objects and returns an SSTable
 // representing the data.
@@ -54,30 +57,31 @@ func OpenSSTable(dataPath, indexPath string) (*SSTable, error) {
 	return NewSSTable(dataFile, indexFile)
 }
 
-// TODO This needs to be able to return an error instead of just an ok bool
-func (s *SSTable) Get(key string) (value []byte, ok bool) {
+// Get looks up a key in the table and returns the corresponding value. If the key does not exist,
+// the second return value will be storage.ErrNoSuchKey.
+func (s *SSTable) Get(key string) (value []byte, err error) {
 	offset, ok := s.index.get(key)
 	if !ok {
-		return nil, false
+		return nil, storage.ErrNoSuchKey
 	}
 
 	recordLen := make([]byte, offsetSize)
-	_, err := s.file.ReadAt(recordLen, int64(offset))
+	_, err = s.file.ReadAt(recordLen, int64(offset))
 	if err != nil {
-		return nil, false
+		return nil, err
 	}
 
 	recordBytes := make([]byte, binary.LittleEndian.Uint32(recordLen))
 	if _, err = s.file.ReadAt(recordBytes, int64(offset+uint32(offsetSize))); err != nil {
-		return nil, false
+		return nil, err
 	}
 
 	var kv KeyValue
-	if err := proto.Unmarshal(recordBytes, &kv); err != nil {
-		return nil, false
+	if err = proto.Unmarshal(recordBytes, &kv); err != nil {
+		return nil, err
 	}
 
-	return kv.Value, true
+	return kv.Value, nil
 }
 
 func (s *SSTable) Close() error {

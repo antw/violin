@@ -1,9 +1,15 @@
 package storage
 
 import (
+	"errors"
 	"sync"
 
 	"github.com/google/btree"
+)
+
+var (
+	// ErrNoSuchKey is used when trying to fetch a key which doesn't exist.
+	ErrNoSuchKey = errors.New("no such key")
 )
 
 type Store struct {
@@ -11,6 +17,17 @@ type Store struct {
 	index   btree.BTree
 	indexMu sync.RWMutex
 }
+
+type GettableStore interface {
+	Get(key string) (value []byte, err error)
+}
+
+type SettableStore interface {
+	Set(key string, value []byte) error
+}
+
+var _ GettableStore = (*Store)(nil)
+var _ SettableStore = (*Store)(nil)
 
 // Pair is returned by Between and contains a key/value pair.
 type Pair struct {
@@ -36,13 +53,13 @@ func NewStoreWithData(data map[string][]byte) (*Store, error) {
 	return s, nil
 }
 
-func (s *Store) Get(key string) (value []byte, ok bool) {
+func (s *Store) Get(key string) (value []byte, err error) {
 	val, ok := s.data.Load(key)
 	if !ok {
-		return nil, false
+		return nil, ErrNoSuchKey
 	}
 
-	return val.([]byte), true
+	return val.([]byte), nil
 }
 
 func (s *Store) Set(key string, value []byte) error {

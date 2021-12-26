@@ -42,6 +42,8 @@ type DistributedStore struct {
 	raft   *raft.Raft
 }
 
+var _ GettableStore = (*DistributedStore)(nil)
+
 func NewDistributedStore(dataDir string, config Config) (*DistributedStore, error) {
 	ds := &DistributedStore{
 		store:  NewStore(),
@@ -175,7 +177,7 @@ func (ds *DistributedStore) apply(req proto.Message) (interface{}, error) {
 }
 
 // Get reads the Value associated with Key and returns a KV record.
-func (ds *DistributedStore) Get(key string) (value []byte, ok bool) {
+func (ds *DistributedStore) Get(key string) (value []byte, err error) {
 	return ds.store.Get(key)
 }
 

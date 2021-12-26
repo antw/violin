@@ -12,16 +12,16 @@ func TestSetGet(t *testing.T) {
 	err := store.Set("foo", []byte("bar"))
 	require.NoError(t, err)
 
-	value, ok := store.Get("foo")
-	require.True(t, ok)
+	value, err := store.Get("foo")
+	require.NoError(t, err)
 	require.Equal(t, []byte("bar"), value)
 }
 
 func TestEmpty(t *testing.T) {
 	store := NewStore()
 
-	_, ok := store.Get("foo")
-	require.False(t, ok)
+	_, err := store.Get("foo")
+	require.ErrorIs(t, err, ErrNoSuchKey)
 }
 
 func TestAscend(t *testing.T) {

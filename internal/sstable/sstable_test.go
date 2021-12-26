@@ -59,16 +59,16 @@ func TestWriterWithAggregator(t *testing.T) {
 	table, readerTeardown := openSSTable(t, writer.kvFile.Name(), writer.indexFile.Name())
 	defer readerTeardown()
 
-	a, ok := table.Get("a")
-	require.True(t, ok)
+	a, err := table.Get("a")
+	require.NoError(t, err)
 	require.Equal(t, []byte("one"), a)
 
-	b, ok := table.Get("b")
-	require.True(t, ok)
+	b, err := table.Get("b")
+	require.NoError(t, err)
 	require.Equal(t, []byte("two"), b)
 
-	c, ok := table.Get("c")
-	require.True(t, ok)
+	c, err := table.Get("c")
+	require.NoError(t, err)
 	require.Equal(t, []byte("three"), c)
 }
 
@@ -76,16 +76,16 @@ func TestSSTable(t *testing.T) {
 	sstable, teardown := createSSTable(t)
 	defer teardown()
 
-	foo, ok := sstable.Get("foo")
-	require.True(t, ok)
+	foo, err := sstable.Get("foo")
+	require.NoError(t, err)
 	require.Equal(t, []byte("bar"), foo)
 
-	baz, ok := sstable.Get("baz")
-	require.True(t, ok)
+	baz, err := sstable.Get("baz")
+	require.NoError(t, err)
 	require.Equal(t, []byte("qux"), baz)
 
-	nope, ok := sstable.Get("nope")
-	require.False(t, ok)
+	nope, err := sstable.Get("nope")
+	require.ErrorIs(t, err, storage.ErrNoSuchKey)
 	require.Equal(t, []byte(nil), nope)
 }
 

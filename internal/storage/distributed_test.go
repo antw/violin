@@ -74,11 +74,13 @@ func TestMultipleNodes(t *testing.T) {
 
 		require.Eventually(t, func() bool {
 			for j := 0; j < nodeCount; j++ {
-				value, ok := stores[j].Get(kv.key)
-				if !ok {
+				value, err := stores[j].Get(kv.key)
+				if err == ErrNoSuchKey {
 					// Ignore missing keys which haven't been replicated yet.
 					return false
 				}
+
+				require.NoError(t, err)
 
 				if !bytes.Equal(kv.value, value) {
 					return false
@@ -100,12 +102,12 @@ func TestMultipleNodes(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Test that disconnected node doesn't receive the KV.
-	value, ok := stores[1].Get("foo2")
-	require.False(t, ok)
+	value, err := stores[1].Get("foo2")
+	require.ErrorIs(t, err, ErrNoSuchKey)
 	require.Nil(t, value)
 
 	// Test that the node which is still connected gets the KV.
-	value, ok = stores[2].Get("foo2")
-	require.True(t, ok)
+	value, err = stores[2].Get("foo2")
+	require.NoError(t, err)
 	require.Equal(t, []byte("bar2"), value)
 }

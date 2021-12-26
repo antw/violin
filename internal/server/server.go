@@ -6,11 +6,12 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/antw/violin/api"
+	"github.com/antw/violin/internal/storage"
 )
 
 type store interface {
-	Get(key string) (value []byte, ok bool)
-	Set(key string, value []byte) error
+	storage.GettableStore
+	storage.SettableStore
 }
 
 type server struct {
@@ -28,10 +29,13 @@ func New(store store, grpcOpts ...grpc.ServerOption) *grpc.Server {
 }
 
 func (s server) Get(ctx context.Context, req *api.GetRequest) (*api.GetResponse, error) {
-	value, ok := s.store.Get(req.GetKey())
+	value, err := s.store.Get(req.GetKey())
 
-	if !ok {
-		return nil, api.ErrNoSuchKey{Key: req.Key}
+	if err != nil {
+		if err == storage.ErrNoSuchKey {
+			err = api.ErrNoSuchKey{Key: req.Key}
+		}
+		return nil, err
 	}
 
 	return &api.GetResponse{
