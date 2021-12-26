@@ -60,7 +60,13 @@ func (h mergeHeap) Len() int {
 }
 
 func (h mergeHeap) Less(i, j int) bool {
-	return h[i].kv.Key < h[j].kv.Key
+	left, right := h[i], h[j]
+
+	if left.kv.Key == right.kv.Key {
+		return left.iterIndex < right.iterIndex
+	}
+
+	return left.kv.Key < right.kv.Key
 }
 
 func (h mergeHeap) Swap(i, j int) {
