@@ -173,3 +173,19 @@ func TestMergeHeapLen(t *testing.T) {
 	heap.Pop(&list)
 	require.Equal(t, list.Len(), 0)
 }
+
+func TestMergeHeapLess(t *testing.T) {
+	a := mergeItem{kv: &KeyValue{Key: "a"}, iterIndex: 0}
+	b := mergeItem{kv: &KeyValue{Key: "b"}, iterIndex: 1}
+
+	mh := mergeHeap([]*mergeItem{&a, &b})
+
+	// Different key.
+	require.True(t, mh.Less(0, 1))
+	require.False(t, mh.Less(1, 0))
+
+	// Same key.
+	b.kv.Key = "a"
+	require.True(t, mh.Less(0, 1))
+	require.False(t, mh.Less(1, 0))
+}

@@ -2,6 +2,7 @@ package sstable
 
 import (
 	"container/heap"
+	"strings"
 )
 
 // multiStore implements SerializableStore across multiple SerializableStores so that all their
@@ -60,13 +61,16 @@ func (h mergeHeap) Len() int {
 }
 
 func (h mergeHeap) Less(i, j int) bool {
-	left, right := h[i], h[j]
-
-	if left.kv.Key == right.kv.Key {
-		return left.iterIndex < right.iterIndex
+	switch strings.Compare(h[i].kv.Key, h[j].kv.Key) {
+	case -1:
+		return true
+	case 1:
+		return false
+	default:
+		// Two kvs with the same key are ordered so that the one from the first iterator appears
+		// first.
+		return h[i].iterIndex < h[j].iterIndex
 	}
-
-	return left.kv.Key < right.kv.Key
 }
 
 func (h mergeHeap) Swap(i, j int) {
