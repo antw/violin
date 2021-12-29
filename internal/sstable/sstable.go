@@ -13,6 +13,9 @@ import (
 var (
 	// Size in bytes of an offset position (uint32).
 	offsetSize = 4
+
+	// schemaVersion contains the current version of the sstable format.
+	schemaVersion = uint32(0)
 )
 
 // SSTable implements a sorted string table. SSTs are immutable and populated by values stored in
@@ -142,7 +145,7 @@ type Writer struct {
 func (w *Writer) Write() error {
 	var ascendErr error
 
-	index := indexWriter{bufio.NewWriter(w.indexFile)}
+	index := newIndexWriter(w.indexFile)
 	kvBuf := bufio.NewWriter(w.kvFile)
 	pos := 0
 

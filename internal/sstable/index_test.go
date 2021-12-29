@@ -1,7 +1,6 @@
 package sstable
 
 import (
-	"bufio"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -29,12 +28,8 @@ func TestIndex(t *testing.T) {
 }
 
 func TestIndexNoKey(t *testing.T) {
-	f, err := ioutil.TempFile("", "index_no_key_test")
-	require.NoError(t, err)
-	defer func() { _ = os.Remove(f.Name()) }()
-
-	index, err := newIndex(f)
-	require.NoError(t, err)
+	index, teardown := createIndex(t, "index_no_key_test", nil)
+	defer teardown()
 
 	pos, ok := index.get("not-exist")
 	require.False(t, ok)
@@ -138,7 +133,7 @@ func createIndex(t *testing.T, name string, pairs []indexEntry) (*index, func())
 	f, err := ioutil.TempFile("", name+"_test")
 	require.NoError(t, err)
 
-	writer := indexWriter{bufio.NewWriter(f)}
+	writer := newIndexWriter(f)
 
 	for _, pair := range pairs {
 		err = writer.Write(pair.key, pair.pos)

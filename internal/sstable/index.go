@@ -3,6 +3,8 @@ package sstable
 import (
 	"bufio"
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"io"
 	"os"
 
@@ -17,6 +19,10 @@ type index struct {
 func newIndex(f *os.File) (*index, error) {
 	tree := btree.New(2)
 	buf := bufio.NewReader(f)
+
+	if err := verifySchemaVersion(buf); err != nil {
+		return nil, err
+	}
 
 	for {
 		_, err := buf.Peek(1)
@@ -52,6 +58,26 @@ func newIndex(f *os.File) (*index, error) {
 	}
 
 	return &index{tree}, nil
+}
+
+// verifySchemaVersion checks the schema version of the SSTable index file and returns an error if
+// the version is not supported.
+func verifySchemaVersion(r io.Reader) error {
+	var version uint32
+
+	if err := binary.Read(r, binary.LittleEndian, &version); err != nil {
+		if errors.Is(err, io.EOF) {
+			// Allow completely empty indices to simplify testing.
+			return nil
+		}
+		return err
+	}
+
+	if version != schemaVersion {
+		return fmt.Errorf("unsupported schema version: %d", version)
+	}
+
+	return nil
 }
 
 // Ascend iterates through each key in the index in ascending order, yielding to the function the
@@ -102,10 +128,32 @@ func (ie indexEntry) Less(than btree.Item) bool {
 // -------------------------------------------------------------------------------------------------
 
 type indexWriter struct {
-	buf *bufio.Writer
+	buf     *bufio.Writer
+	started bool
+}
+
+func newIndexWriter(w io.Writer) *indexWriter {
+	return &indexWriter{
+		buf: bufio.NewWriter(w),
+	}
+}
+
+func (i *indexWriter) start() error {
+	if i.started {
+		return nil
+	}
+
+	i.started = true
+
+	// Write a prefix which will be used to check that the file version can be read.
+	return binary.Write(i.buf, binary.LittleEndian, schemaVersion)
 }
 
 func (i *indexWriter) Write(key string, pos uint32) error {
+	if err := i.start(); err != nil {
+		return err
+	}
+
 	err := binary.Write(i.buf, binary.LittleEndian, uint32(len(key)))
 	if err != nil {
 		return err
@@ -116,7 +164,6 @@ func (i *indexWriter) Write(key string, pos uint32) error {
 		return err
 	}
 
-	//_, err = writeUvarint(i.buf, pos)
 	err = binary.Write(i.buf, binary.LittleEndian, pos)
 	if err != nil {
 		return err
@@ -126,5 +173,8 @@ func (i *indexWriter) Write(key string, pos uint32) error {
 }
 
 func (i *indexWriter) Flush() error {
+	if err := i.start(); err != nil {
+		return err
+	}
 	return i.buf.Flush()
 }
