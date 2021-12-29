@@ -7,7 +7,7 @@ import (
 	"github.com/antw/violin/internal/storage"
 )
 
-// multiStore implements SerializableStore across multiple SerializableStores so that all their
+// aggregator implements SerializableStore across multiple SerializableStores so that all their
 // key/value pairs can be iterated over in lexographic order.
 type aggregator struct {
 	stores []storage.SerializableStore
