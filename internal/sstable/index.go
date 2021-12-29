@@ -54,6 +54,29 @@ func newIndex(f *os.File) (*index, error) {
 	return &index{tree}, nil
 }
 
+// Ascend iterates through each key in the index in ascending order, yielding to the function the
+// key and corresponding position of the value in the data file.
+func (i *index) Ascend(fn func(key string, pos uint32) bool) {
+	i.tree.Ascend(func(item btree.Item) bool {
+		return fn(item.(indexEntry).key, item.(indexEntry).pos)
+	})
+}
+
+// AscendRange calls the iterator for every value in the index within the range
+// [greaterOrEqual, lessThan), until iterator returns false.
+func (i *index) AscendRange(
+	greaterOrEqual string,
+	lessThan string,
+	iterator func(key string, pos uint32) bool,
+) {
+	from := indexEntry{key: greaterOrEqual}
+	to := indexEntry{key: lessThan}
+
+	i.tree.AscendRange(from, to, func(item btree.Item) bool {
+		return iterator(item.(indexEntry).key, item.(indexEntry).pos)
+	})
+}
+
 // get returns the position at which the key is stored in the file. The second return value
 // indicates whether the key exists.
 func (i *index) get(key string) (uint32, bool) {

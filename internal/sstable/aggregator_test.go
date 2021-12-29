@@ -38,7 +38,7 @@ func TestAggregatorWithOneStore(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	agg := aggregator{stores: []SerializableStore{store}}
+	agg := aggregator{stores: []storage.SerializableStore{store}}
 	calls := 0
 
 	agg.Ascend(func(k string, v []byte) bool {
@@ -66,7 +66,7 @@ func TestAggregatorWithTwoStores(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	agg := aggregator{stores: []SerializableStore{older, newer}}
+	agg := aggregator{stores: []storage.SerializableStore{older, newer}}
 	var keys []string
 
 	agg.Ascend(func(k string, v []byte) bool {
@@ -94,7 +94,7 @@ func TestAggregatorWithKeyConflict(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	agg := aggregator{stores: []SerializableStore{older, newer}}
+	agg := aggregator{stores: []storage.SerializableStore{older, newer}}
 	var keys []string
 
 	agg.Ascend(func(k string, v []byte) bool {
@@ -121,7 +121,7 @@ func TestAggregatorAscendEarlyExit(t *testing.T) {
 
 	require.NoError(t, err)
 
-	agg := aggregator{stores: []SerializableStore{store}}
+	agg := aggregator{stores: []storage.SerializableStore{store}}
 
 	var seen []string
 	calls := 0

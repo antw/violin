@@ -18,16 +18,28 @@ type Store struct {
 	indexMu sync.RWMutex
 }
 
-type GettableStore interface {
+// Iterator is used in Ascend and AscendRange. Each key-value pair is yielded to the function. The
+// function may return false to end iteration.
+type Iterator func(key string, value []byte) bool
+
+type ReadableStore interface {
+	SerializableStore
+	AscendRange(greaterOrEqual string, lessThan string, iterator Iterator)
 	Get(key string) (value []byte, err error)
 }
 
-type SettableStore interface {
+// SerializableStore is an interface which describes any kind of key/value store whose values may
+// be iterated and yielded to a function in lexographical order.
+type SerializableStore interface {
+	Ascend(iterator Iterator)
+}
+
+type WritableStore interface {
 	Set(key string, value []byte) error
 }
 
-var _ GettableStore = (*Store)(nil)
-var _ SettableStore = (*Store)(nil)
+var _ ReadableStore = (*Store)(nil)
+var _ WritableStore = (*Store)(nil)
 
 // Pair is returned by Between and contains a key/value pair.
 type Pair struct {
@@ -73,7 +85,7 @@ func (s *Store) Set(key string, value []byte) error {
 }
 
 // Ascend calls the iterator for each key/value pair in the store, until the iterator returns false.
-func (s *Store) Ascend(iterator func(key string, value []byte) bool) {
+func (s *Store) Ascend(iterator Iterator) {
 	s.indexMu.RLock()
 	defer s.indexMu.RUnlock()
 
@@ -91,11 +103,7 @@ func (s *Store) Ascend(iterator func(key string, value []byte) bool) {
 
 // AscendRange calls the iterator for every value in the tree within the range
 // [greaterOrEqual, lessThan), until iterator returns false.
-func (s *Store) AscendRange(
-	greaterOrEqual string,
-	lessThan string,
-	iterator func(key string, value []byte) bool,
-) {
+func (s *Store) AscendRange(greaterOrEqual string, lessThan string, iterator Iterator) {
 	s.indexMu.RLock()
 	defer s.indexMu.RUnlock()
 

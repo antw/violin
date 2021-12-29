@@ -10,8 +10,8 @@ import (
 )
 
 type store interface {
-	storage.GettableStore
-	storage.SettableStore
+	storage.ReadableStore
+	storage.WritableStore
 }
 
 type server struct {

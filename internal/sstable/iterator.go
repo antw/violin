@@ -1,7 +1,9 @@
 package sstable
 
+import "github.com/antw/violin/internal/storage"
+
 type storeIterator struct {
-	store SerializableStore
+	store storage.SerializableStore
 	c     chan *KeyValue
 }
 

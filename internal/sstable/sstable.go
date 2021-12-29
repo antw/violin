@@ -3,6 +3,7 @@ package sstable
 import (
 	"bufio"
 	"encoding/binary"
+	"fmt"
 	"os"
 
 	"github.com/antw/violin/internal/storage"
@@ -23,7 +24,7 @@ type SSTable struct {
 	index *index
 }
 
-var _ storage.GettableStore = (*SSTable)(nil)
+var _ storage.ReadableStore = (*SSTable)(nil)
 
 // NewSSTable rakes a reference to data and index os.File objects and returns an SSTable
 // representing the data.
@@ -57,6 +58,30 @@ func OpenSSTable(dataPath, indexPath string) (*SSTable, error) {
 	return NewSSTable(dataFile, indexFile)
 }
 
+func (s *SSTable) Ascend(iterator storage.Iterator) {
+	s.index.Ascend(func(key string, offset uint32) bool {
+		kv, err := s.recordAt(offset)
+		if err != nil {
+			panicOffsetRead(offset, s.file.Name(), err)
+		}
+
+		return iterator(kv.Key, kv.Value)
+	})
+}
+
+// AscendRange calls the iterator for every value in the tree within the range
+// [greaterOrEqual, lessThan), until iterator returns false.
+func (s *SSTable) AscendRange(greaterOrEqual string, lessThan string, iterator storage.Iterator) {
+	s.index.AscendRange(greaterOrEqual, lessThan, func(key string, offset uint32) bool {
+		kv, err := s.recordAt(offset)
+		if err != nil {
+			panicOffsetRead(offset, s.file.Name(), err)
+		}
+
+		return iterator(kv.Key, kv.Value)
+	})
+}
+
 // Get looks up a key in the table and returns the corresponding value. If the key does not exist,
 // the second return value will be storage.ErrNoSuchKey.
 func (s *SSTable) Get(key string) (value []byte, err error) {
@@ -65,8 +90,18 @@ func (s *SSTable) Get(key string) (value []byte, err error) {
 		return nil, storage.ErrNoSuchKey
 	}
 
+	kv, err := s.recordAt(offset)
+	if err != nil {
+		return nil, err
+	}
+
+	return kv.Value, nil
+}
+
+// recordAt reads the KeyValue record at the offset in the data file.
+func (s *SSTable) recordAt(offset uint32) (*KeyValue, error) {
 	recordLen := make([]byte, offsetSize)
-	_, err = s.file.ReadAt(recordLen, int64(offset))
+	_, err := s.file.ReadAt(recordLen, int64(offset))
 	if err != nil {
 		return nil, err
 	}
@@ -81,25 +116,25 @@ func (s *SSTable) Get(key string) (value []byte, err error) {
 		return nil, err
 	}
 
-	return kv.Value, nil
+	return &kv, nil
 }
 
 func (s *SSTable) Close() error {
 	return s.file.Close()
 }
 
-// -------------------------------------------------------------------------------------------------
-
-// SerializableStore is an interface which describes any kind of key/value store whose values may
-// be iterated and yielded to a function in lexographical order.
-type SerializableStore interface {
-	Ascend(func(key string, value []byte) bool)
+// panicOffsetRead panics when trying to read from an invalid offset in a data file. This is
+// irrecoverable.
+func panicOffsetRead(offset uint32, filename string, err error) {
+	panic(fmt.Sprintf("failed to read record at offset %d of %s: %s", offset, filename, err))
 }
+
+// -------------------------------------------------------------------------------------------------
 
 type Writer struct {
 	kvFile    *os.File
 	indexFile *os.File
-	source    SerializableStore
+	source    storage.SerializableStore
 }
 
 // Write the contents of the source to a sstable and index on disk. Both the kvFile and indexFile

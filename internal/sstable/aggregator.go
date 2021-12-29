@@ -3,16 +3,20 @@ package sstable
 import (
 	"container/heap"
 	"strings"
+
+	"github.com/antw/violin/internal/storage"
 )
 
 // multiStore implements SerializableStore across multiple SerializableStores so that all their
 // key/value pairs can be iterated over in lexographic order.
 type aggregator struct {
-	stores []SerializableStore
+	stores []storage.SerializableStore
 }
 
+var _ storage.SerializableStore = (*aggregator)(nil)
+
 // Ascend calls iterator for each key/value pair in each store, in lexographic order.
-func (a *aggregator) Ascend(iterator func(key string, value []byte) bool) {
+func (a *aggregator) Ascend(iterator storage.Iterator) {
 	pq := &mergeHeap{}
 	iterators := make([]*storeIterator, len(a.stores))
 

@@ -42,7 +42,7 @@ type DistributedStore struct {
 	raft   *raft.Raft
 }
 
-var _ GettableStore = (*DistributedStore)(nil)
+var _ ReadableStore = (*DistributedStore)(nil)
 
 func NewDistributedStore(dataDir string, config Config) (*DistributedStore, error) {
 	ds := &DistributedStore{
@@ -139,6 +139,18 @@ func (ds *DistributedStore) setupRaft(dataDir string) error {
 	}
 
 	return err
+}
+
+// Ascend iterates through each key in the index in ascending order, yielding to the function the
+// key and corresponding position of the value in the data file.
+func (ds *DistributedStore) Ascend(fn Iterator) {
+	ds.store.Ascend(fn)
+}
+
+// AscendRange calls the iterator for every value in the tree within the range
+// [greaterOrEqual, lessThan), until iterator returns false.
+func (ds *DistributedStore) AscendRange(greaterOrEqual, lessThan string, fn Iterator) {
+	ds.store.AscendRange(greaterOrEqual, lessThan, fn)
 }
 
 // Set appends the KV to the Raft log.

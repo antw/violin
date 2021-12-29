@@ -49,7 +49,7 @@ func TestWriterWithAggregator(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	agg := aggregator{stores: []SerializableStore{first, second}}
+	agg := aggregator{stores: []storage.SerializableStore{first, second}}
 	writer, writerTeardown := createWriter(t, &agg)
 	defer writerTeardown()
 
@@ -73,7 +73,10 @@ func TestWriterWithAggregator(t *testing.T) {
 }
 
 func TestSSTable(t *testing.T) {
-	sstable, teardown := createSSTable(t)
+	sstable, teardown := createSSTable(t, []*KeyValue{
+		{Key: "foo", Value: []byte("bar")},
+		{Key: "baz", Value: []byte("qux")},
+	})
 	defer teardown()
 
 	foo, err := sstable.Get("foo")
@@ -130,6 +133,102 @@ func TestOpenSSTableNoIndex(t *testing.T) {
 	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
+func TestSSTable_Ascend(t *testing.T) {
+	table, teardown := createSSTable(t, []*KeyValue{
+		{Key: "foo", Value: []byte("one")},
+		{Key: "bar", Value: []byte("two")},
+		{Key: "baz", Value: []byte("three")},
+		{Key: "qux", Value: []byte("four")},
+	})
+	defer teardown()
+
+	keys := make([]string, 0, 4)
+	values := make([]string, 0, 4)
+
+	table.Ascend(func(key string, value []byte) bool {
+		keys = append(keys, key)
+		values = append(values, string(value))
+
+		return true
+	})
+
+	require.Equal(t, []string{"bar", "baz", "foo", "qux"}, keys)
+	require.Equal(t, []string{"two", "three", "one", "four"}, values)
+}
+
+func TestSStable_Ascend_EarlyStop(t *testing.T) {
+	// Asserts that returning false in the iterator stops iteration.
+
+	table, teardown := createSSTable(t, []*KeyValue{
+		{Key: "foo", Value: []byte("one")},
+		{Key: "bar", Value: []byte("two")},
+		{Key: "baz", Value: []byte("three")},
+		{Key: "qux", Value: []byte("four")},
+	})
+	defer teardown()
+
+	keys := make([]string, 0, 3)
+	values := make([]string, 0, 3)
+
+	table.Ascend(func(key string, value []byte) bool {
+		keys = append(keys, key)
+		values = append(values, string(value))
+
+		return key < "foo"
+	})
+
+	require.Equal(t, []string{"bar", "baz", "foo"}, keys)
+	require.Equal(t, []string{"two", "three", "one"}, values)
+}
+
+func TestSSTable_AscendRange(t *testing.T) {
+	table, teardown := createSSTable(t, []*KeyValue{
+		{Key: "foo", Value: []byte("one")},
+		{Key: "bar", Value: []byte("two")},
+		{Key: "baz", Value: []byte("three")},
+		{Key: "qux", Value: []byte("four")},
+	})
+	defer teardown()
+
+	keys := make([]string, 0, 2)
+	values := make([]string, 0, 2)
+
+	table.AscendRange("baz", "qux", func(key string, value []byte) bool {
+		keys = append(keys, key)
+		values = append(values, string(value))
+
+		return true
+	})
+
+	require.Equal(t, []string{"baz", "foo"}, keys)
+	require.Equal(t, []string{"three", "one"}, values)
+}
+
+func TestSSTable_AscendRange_EarlyStop(t *testing.T) {
+	// Asserts that returning false in the iterator stops iteration.
+
+	table, teardown := createSSTable(t, []*KeyValue{
+		{Key: "foo", Value: []byte("one")},
+		{Key: "bar", Value: []byte("two")},
+		{Key: "baz", Value: []byte("three")},
+		{Key: "qux", Value: []byte("four")},
+	})
+	defer teardown()
+
+	keys := make([]string, 0, 2)
+	values := make([]string, 0, 2)
+
+	table.AscendRange("bar", "qux", func(key string, value []byte) bool {
+		keys = append(keys, key)
+		values = append(values, string(value))
+
+		return key < "baz"
+	})
+
+	require.Equal(t, []string{"bar", "baz"}, keys)
+	require.Equal(t, []string{"two", "three"}, values)
+}
+
 // -------------------------------------------------------------------------------------------------
 
 func createTableFile(t *testing.T, pattern string) (*os.File, func()) {
@@ -149,7 +248,7 @@ func createTableFiles(t *testing.T, pattern string) (*os.File, *os.File, func())
 	}
 }
 
-func createWriter(t *testing.T, source SerializableStore) (Writer, func()) {
+func createWriter(t *testing.T, source storage.SerializableStore) (Writer, func()) {
 	os.TempDir()
 	dataFile, err := os.CreateTemp("", "sstable_writer_data_test")
 	require.NoError(t, err)
@@ -169,20 +268,17 @@ func createWriter(t *testing.T, source SerializableStore) (Writer, func()) {
 	}, teardown
 }
 
-// createSSTable creates an SSTable with two key/value pairs:
-//
-//   foo: bar
-//   baz: qux
-func createSSTable(t *testing.T) (*SSTable, func()) {
+// createSSTable creates an SSTable with the given key-value pairs.
+func createSSTable(t *testing.T, kvs []*KeyValue) (*SSTable, func()) {
 	store := storage.NewStore()
-	err := store.Set("foo", []byte("bar"))
-	require.NoError(t, err)
 
-	err = store.Set("baz", []byte("qux"))
-	require.NoError(t, err)
+	for _, kv := range kvs {
+		err := store.Set(kv.Key, kv.Value)
+		require.NoError(t, err)
+	}
 
 	writer, writerTeardown := createWriter(t, store)
-	err = writer.Write()
+	err := writer.Write()
 	require.NoError(t, err)
 
 	table, readerTeardown := openSSTable(t, writer.kvFile.Name(), writer.indexFile.Name())
