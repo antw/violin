@@ -27,7 +27,7 @@ func newIndex(f *os.File) (*index, error) {
 	for {
 		_, err := buf.Peek(1)
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			return nil, err

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 
 	"google.golang.org/grpc"
 
@@ -58,16 +59,10 @@ func (s server) Delete(ctx context.Context, req *api.DeleteRequest) (*api.Delete
 func (s server) Get(ctx context.Context, req *api.GetRequest) (*api.GetResponse, error) {
 	value, err := s.store.Get(req.GetKey())
 
-	if err == storage.ErrNoSuchKey || value == nil {
+	if errors.Is(err, storage.ErrNoSuchKey) || value == nil {
 		return nil, api.ErrNoSuchKey{Key: req.Key}
 	} else if err != nil {
 		return nil, err
-	}
-
-	if err != nil {
-		if err == storage.ErrNoSuchKey {
-			err = api.ErrNoSuchKey{Key: req.Key}
-		}
 	}
 
 	return &api.GetResponse{

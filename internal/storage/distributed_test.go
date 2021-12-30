@@ -2,6 +2,7 @@ package storage
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -75,7 +76,7 @@ func TestMultipleNodes(t *testing.T) {
 		require.Eventually(t, func() bool {
 			for j := 0; j < nodeCount; j++ {
 				value, err := stores[j].Get(kv.key)
-				if err == ErrNoSuchKey {
+				if errors.Is(err, ErrNoSuchKey) {
 					// Ignore missing keys which haven't been replicated yet.
 					return false
 				}
