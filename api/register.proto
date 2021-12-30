@@ -5,11 +5,21 @@ option go_package = "github.com/antw/violin/api";
 service Register {
 	rpc Get(GetRequest) returns (GetResponse) {}
 	rpc Set(SetRequest) returns (SetResponse) {}
+  rpc Delete(DeleteRequest) returns (DeleteResponse) {}
 }
 
 message KV {
   string key = 1;
   bytes value = 2;
+}
+
+message DeleteRequest {
+  string key = 1;
+}
+
+message DeleteResponse {
+  KV register = 1;
+  uint64 deleted = 2;
 }
 
 message GetRequest {

@@ -63,3 +63,50 @@ func TestBetween(t *testing.T) {
 	require.Equal(t, Pair{Key: "b1", Value: []byte("b1 val")}, pairs[1])
 	require.Equal(t, Pair{Key: "c", Value: []byte("c val")}, pairs[2])
 }
+
+func TestStore_Delete(t *testing.T) {
+	store, err := NewStoreWithData(map[string][]byte{
+		"a": []byte("a val"),
+		"b": []byte("b val"),
+	})
+	require.NoError(t, err)
+
+	err = store.Delete("a")
+	require.NoError(t, err)
+
+	aVal, err := store.Get("a")
+	require.NoError(t, err)
+	require.Nil(t, aVal)
+
+	bVal, err := store.Get("b")
+	require.NoError(t, err)
+	require.Equal(t, "b val", string(bVal))
+
+	// Test that setting the key again works.
+	err = store.Set("a", []byte("new a val"))
+	require.NoError(t, err)
+
+	aVal, err = store.Get("a")
+	require.NoError(t, err)
+	require.Equal(t, "new a val", string(aVal))
+}
+
+func TestStore_Delete_NotExists(t *testing.T) {
+	// Tests that deleting a key that does not exist in the store tombstones the key.
+
+	store, err := NewStoreWithData(map[string][]byte{
+		"b": []byte("b val"),
+	})
+	require.NoError(t, err)
+
+	err = store.Delete("a")
+	require.NoError(t, err)
+
+	aVal, err := store.Get("a")
+	require.NoError(t, err)
+	require.Nil(t, aVal)
+
+	bVal, err := store.Get("b")
+	require.NoError(t, err)
+	require.Equal(t, "b val", string(bVal))
+}

@@ -25,6 +25,9 @@ type Iterator func(key string, value []byte) bool
 type ReadableStore interface {
 	SerializableStore
 	AscendRange(greaterOrEqual string, lessThan string, iterator Iterator)
+
+	// Get fetches the value of a key. Get may return an ErrNoSuchKey error if it has never been
+	// seen, or a value of nil if it has been set and later deleted.
 	Get(key string) (value []byte, err error)
 }
 
@@ -36,6 +39,7 @@ type SerializableStore interface {
 
 type WritableStore interface {
 	Set(key string, value []byte) error
+	Delete(key string) error
 }
 
 var _ ReadableStore = (*Store)(nil)
@@ -130,6 +134,12 @@ func (s *Store) Between(greaterOrEqual, lessThan string) []Pair {
 	})
 
 	return pairs
+}
+
+// Delete removes a key from the store if it exists, setting its value to nil. A value of nil
+// indicates that the key has been tombstoned.
+func (s *Store) Delete(key string) error {
+	return s.Set(key, nil)
 }
 
 // indexKey implements btree.Item for strings.

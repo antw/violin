@@ -69,3 +69,65 @@ func TestGetNotFound(t *testing.T) {
 
 	require.Equal(t, want, got)
 }
+
+func TestServer_Delete(t *testing.T) {
+	ctx := context.Background()
+
+	_, client, teardown := setupTest(t)
+	defer teardown()
+
+	record := &api.KV{
+		Key:   "foo",
+		Value: []byte("bar"),
+	}
+
+	_, err := client.Set(ctx, &api.SetRequest{Register: record})
+	require.NoError(t, err)
+
+	resp, err := client.Delete(ctx, &api.DeleteRequest{Key: "foo"})
+	require.NoError(t, err)
+
+	require.Equal(t, uint64(1), resp.GetDeleted())
+	require.NotNil(t, resp.GetRegister())
+	require.Equal(t, "foo", resp.GetRegister().GetKey())
+	require.Equal(t, []byte("bar"), resp.GetRegister().GetValue())
+}
+
+func TestServer_Delete_NotExist(t *testing.T) {
+	ctx := context.Background()
+
+	_, client, teardown := setupTest(t)
+	defer teardown()
+
+	resp, err := client.Delete(ctx, &api.DeleteRequest{Key: "foo"})
+	require.NoError(t, err)
+
+	require.Equal(t, uint64(0), resp.GetDeleted())
+	require.Nil(t, resp.GetRegister())
+}
+
+func TestServer_Get_DeletedKey(t *testing.T) {
+	ctx := context.Background()
+
+	_, client, teardown := setupTest(t)
+	defer teardown()
+
+	record := &api.KV{
+		Key:   "foo",
+		Value: []byte("bar"),
+	}
+
+	_, err := client.Set(ctx, &api.SetRequest{Register: record})
+	require.NoError(t, err)
+
+	_, err = client.Delete(ctx, &api.DeleteRequest{Key: "foo"})
+	require.NoError(t, err)
+
+	get, err := client.Get(ctx, &api.GetRequest{Key: "foo"})
+	require.Nil(t, get)
+
+	got := status.Code(err)
+	want := status.Code(api.ErrNoSuchKey{}.GRPCStatus().Err())
+
+	require.Equal(t, want, got)
+}

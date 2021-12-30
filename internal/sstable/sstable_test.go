@@ -92,6 +92,36 @@ func TestSSTable(t *testing.T) {
 	require.Equal(t, []byte(nil), nope)
 }
 
+func TestWriter_Write_WithTombstone(t *testing.T) {
+	store := storage.NewStore()
+
+	err := store.Set("foo", []byte("bar"))
+	require.NoError(t, err)
+
+	err = store.Set("baz", []byte("qux"))
+	require.NoError(t, err)
+
+	err = store.Delete("baz")
+	require.NoError(t, err)
+
+	writer, writerTeardown := createWriter(t, store)
+	defer writerTeardown()
+
+	err = writer.Write()
+	require.NoError(t, err)
+
+	table, openTeardown := openSSTable(t, writer.kvFile.Name(), writer.indexFile.Name())
+	defer openTeardown()
+
+	presentVal, err := table.Get("foo")
+	require.NoError(t, err)
+	require.Equal(t, "bar", string(presentVal))
+
+	deletedVal, err := table.Get("baz")
+	require.NoError(t, err)
+	require.Nil(t, deletedVal)
+}
+
 // -------------------------------------------------------------------------------------------------
 
 func TestOpenSSTable(t *testing.T) {

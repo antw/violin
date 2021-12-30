@@ -139,6 +139,72 @@ func TestAggregatorAscendEarlyExit(t *testing.T) {
 	require.Equal(t, "b", seen[1])
 }
 
+func TestAggregatorWithNewerDeletedKey(t *testing.T) {
+	older, err := storage.NewStoreWithData(map[string][]byte{
+		"a": []byte("one"),
+		"c": []byte("one"),
+	})
+	require.NoError(t, err)
+
+	newer, err := storage.NewStoreWithData(map[string][]byte{
+		"b": []byte("two"),
+		"c": []byte("two"),
+	})
+	require.NoError(t, err)
+
+	err = newer.Delete("c")
+	require.NoError(t, err)
+
+	agg := aggregator{stores: []storage.SerializableStore{older, newer}}
+
+	var keys []string
+	var vals []string
+
+	agg.Ascend(func(k string, v []byte) bool {
+		keys = append(keys, k)
+		vals = append(vals, string(v))
+		return true
+	})
+
+	// Asserts that non-conflicting keys after the conflict are still yielded.
+	require.Equal(t, 3, len(keys))
+	require.Equal(t, []string{"a", "b", "c"}, keys)
+	require.Equal(t, []string{"one", "two", ""}, vals)
+}
+
+func TestAggregatorWithOlderDeletedKey(t *testing.T) {
+	older, err := storage.NewStoreWithData(map[string][]byte{
+		"a": []byte("one"),
+		"c": []byte("one"),
+	})
+	require.NoError(t, err)
+
+	newer, err := storage.NewStoreWithData(map[string][]byte{
+		"b": []byte("two"),
+		"c": []byte("two"),
+	})
+	require.NoError(t, err)
+
+	err = older.Delete("c")
+	require.NoError(t, err)
+
+	agg := aggregator{stores: []storage.SerializableStore{older, newer}}
+
+	var keys []string
+	var vals []string
+
+	agg.Ascend(func(k string, v []byte) bool {
+		keys = append(keys, k)
+		vals = append(vals, string(v))
+		return true
+	})
+
+	// Asserts that non-conflicting keys after the conflict are still yielded.
+	require.Equal(t, 3, len(keys))
+	require.Equal(t, []string{"a", "b", "c"}, keys)
+	require.Equal(t, []string{"one", "two", "two"}, vals)
+}
+
 //--------------------------------------------------------------------------------------------------
 
 func TestMergeHeapPushPop(t *testing.T) {

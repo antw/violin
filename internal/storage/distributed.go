@@ -43,6 +43,7 @@ type DistributedStore struct {
 }
 
 var _ ReadableStore = (*DistributedStore)(nil)
+var _ WritableStore = (*DistributedStore)(nil)
 
 func NewDistributedStore(dataDir string, config Config) (*DistributedStore, error) {
 	ds := &DistributedStore{
@@ -191,6 +192,11 @@ func (ds *DistributedStore) apply(req proto.Message) (interface{}, error) {
 // Get reads the Value associated with Key and returns a KV record.
 func (ds *DistributedStore) Get(key string) (value []byte, err error) {
 	return ds.store.Get(key)
+}
+
+// Delete removes a key from the store.
+func (ds *DistributedStore) Delete(key string) error {
+	return ds.store.Delete(key)
 }
 
 // Join adds a node to the Raft cluster.
