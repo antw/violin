@@ -1,7 +1,6 @@
 package sstable
 
 import (
-	"container/heap"
 	"testing"
 
 	"github.com/antw/violin/internal/storage"
@@ -75,7 +74,6 @@ func TestAggregatorWithTwoStores(t *testing.T) {
 	})
 
 	// Asserts that non-conflicting keys after the conflict are still yielded.
-	require.Equal(t, 3, len(keys))
 	require.Equal(t, []string{"a", "b", "c"}, keys)
 }
 
@@ -203,55 +201,4 @@ func TestAggregatorWithOlderDeletedKey(t *testing.T) {
 	require.Equal(t, 3, len(keys))
 	require.Equal(t, []string{"a", "b", "c"}, keys)
 	require.Equal(t, []string{"one", "two", "two"}, vals)
-}
-
-//--------------------------------------------------------------------------------------------------
-
-func TestMergeHeapPushPop(t *testing.T) {
-	list := mergeHeap{}
-
-	a := mergeItem{kv: &KeyValue{Key: "a"}, iterIndex: 0}
-	b := mergeItem{kv: &KeyValue{Key: "b"}, iterIndex: 1}
-	c := mergeItem{kv: &KeyValue{Key: "c"}, iterIndex: 2}
-
-	heap.Push(&list, &b)
-	heap.Push(&list, &c)
-	heap.Push(&list, &a)
-
-	require.Equal(t, a, *heap.Pop(&list).(*mergeItem))
-	require.Equal(t, b, *heap.Pop(&list).(*mergeItem))
-	require.Equal(t, c, *heap.Pop(&list).(*mergeItem))
-}
-
-func TestMergeHeapLen(t *testing.T) {
-	list := mergeHeap{}
-
-	require.Equal(t, list.Len(), 0)
-	require.Equal(t, len(list), 0)
-
-	heap.Push(&list, &mergeItem{kv: &KeyValue{Key: "a"}, iterIndex: 0})
-	heap.Push(&list, &mergeItem{kv: &KeyValue{Key: "b"}, iterIndex: 1})
-	require.Equal(t, list.Len(), 2)
-
-	heap.Pop(&list)
-	require.Equal(t, list.Len(), 1)
-
-	heap.Pop(&list)
-	require.Equal(t, list.Len(), 0)
-}
-
-func TestMergeHeapLess(t *testing.T) {
-	a := mergeItem{kv: &KeyValue{Key: "a"}, iterIndex: 0}
-	b := mergeItem{kv: &KeyValue{Key: "b"}, iterIndex: 1}
-
-	mh := mergeHeap([]*mergeItem{&a, &b})
-
-	// Different key.
-	require.True(t, mh.Less(0, 1))
-	require.False(t, mh.Less(1, 0))
-
-	// Same key.
-	b.kv.Key = "a"
-	require.True(t, mh.Less(0, 1))
-	require.False(t, mh.Less(1, 0))
 }

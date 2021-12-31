@@ -1,9 +1,6 @@
 package sstable
 
 import (
-	"container/heap"
-	"strings"
-
 	"github.com/antw/violin/internal/storage"
 )
 
@@ -17,89 +14,21 @@ var _ storage.SerializableStore = (*aggregator)(nil)
 
 // Ascend calls iterator for each key/value pair in each store, in lexographic order.
 func (a *aggregator) Ascend(iterator storage.Iterator) {
-	pq := &mergeHeap{}
-	iterators := make([]*Iterator, len(a.stores))
+	fns := make([]CurriedIterable, len(a.stores))
 
-	for i, store := range a.stores {
-		iterators[i] = NewIterator(store.Ascend)
-
-		if item, ok := iterators[i].Next(); ok {
-			heap.Push(pq, &mergeItem{kv: item, iterIndex: i})
-		}
+	for i := range a.stores {
+		idx := i
+		fns[idx] = func(it storage.Iterator) { a.stores[idx].Ascend(it) }
 	}
 
-	for pq.Len() > 0 {
-		item := heap.Pop(pq).(*mergeItem)
-		conflict := false
+	it := NewAggregatedIterator(fns)
+	defer it.Release()
 
-		// Check that no later iterator has a conflicting key. If a conflict is found it will always
-		// be the next element in the heap.
-		if next := pq.Peek(); next != nil && next.kv.Key == item.kv.Key {
-			conflict = true
+	kv, ok := it.Next()
+	for ok {
+		if ret := iterator(kv.GetKey(), kv.GetValue()); !ret {
+			break
 		}
-
-		if !conflict && !iterator(item.kv.Key, item.kv.Value) {
-			return
-		}
-
-		if nextItem, ok := iterators[item.iterIndex].Next(); ok {
-			heap.Push(pq, &mergeItem{kv: nextItem, iterIndex: item.iterIndex})
-		}
+		kv, ok = it.Next()
 	}
-}
-
-// -------------------------------------------------------------------------------------------------
-
-type mergeItem struct {
-	kv        *KeyValue
-	iterIndex int
-}
-
-// itemHeap implements heap.Interface.
-type mergeHeap []*mergeItem
-
-var _ heap.Interface = (*mergeHeap)(nil)
-
-func (h mergeHeap) Len() int {
-	return len(h)
-}
-
-func (h mergeHeap) Less(i, j int) bool {
-	switch strings.Compare(h[i].kv.Key, h[j].kv.Key) {
-	case -1:
-		return true
-	case 1:
-		return false
-	default:
-		// Two kvs with the same key are ordered so that the one from the first iterator appears
-		// first.
-		return h[i].iterIndex < h[j].iterIndex
-	}
-}
-
-func (h mergeHeap) Swap(i, j int) {
-	h[i], h[j] = h[j], h[i]
-}
-
-func (h *mergeHeap) Push(x interface{}) {
-	*h = append(*h, x.(*mergeItem))
-}
-
-func (h *mergeHeap) Pop() interface{} {
-	old := *h
-	n := len(old)
-	x := old[n-1]
-	*h = old[0 : n-1]
-
-	return x
-}
-
-func (h *mergeHeap) Peek() *mergeItem {
-	hp := *h
-
-	if len(hp) == 0 {
-		return nil
-	}
-
-	return hp[0]
 }
