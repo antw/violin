@@ -18,10 +18,10 @@ var _ storage.SerializableStore = (*aggregator)(nil)
 // Ascend calls iterator for each key/value pair in each store, in lexographic order.
 func (a *aggregator) Ascend(iterator storage.Iterator) {
 	pq := &mergeHeap{}
-	iterators := make([]*storeIterator, len(a.stores))
+	iterators := make([]*Iterator, len(a.stores))
 
 	for i, store := range a.stores {
-		iterators[i] = &storeIterator{store: store}
+		iterators[i] = NewIterator(store.Ascend)
 
 		if item, ok := iterators[i].Next(); ok {
 			heap.Push(pq, &mergeItem{kv: item, iterIndex: i})

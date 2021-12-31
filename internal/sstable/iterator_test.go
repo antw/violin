@@ -8,34 +8,49 @@ import (
 	"github.com/antw/violin/internal/storage"
 )
 
-func TestIterator(t *testing.T) {
+func TestIterator_WithAscend(t *testing.T) {
 	store, err := storage.NewStoreWithData(map[string][]byte{
-		"a": []byte("1"),
-		"b": []byte("2"),
+		"foo": []byte("1"),
+		"bar": []byte("2"),
 	})
 	require.NoError(t, err)
 
-	iterator := storeIterator{store: store}
+	iterator := NewIterator(store.Ascend)
 
 	kv, ok := iterator.Next()
 	require.True(t, ok)
-	require.Equal(t, &KeyValue{Key: "a", Value: []byte("1")}, kv)
+	require.Equal(t, &KeyValue{Key: "bar", Value: []byte("2")}, kv)
 
 	kv, ok = iterator.Next()
 	require.True(t, ok)
-	require.Equal(t, &KeyValue{Key: "b", Value: []byte("2")}, kv)
+	require.Equal(t, &KeyValue{Key: "foo", Value: []byte("1")}, kv)
 
 	kv, ok = iterator.Next()
 	require.False(t, ok)
 	require.Nil(t, kv)
 }
 
-func TestEmptyIterator(t *testing.T) {
-	store := storage.NewStore()
+func TestIterator_WithAscendBetween(t *testing.T) {
+	store, err := storage.NewStoreWithData(map[string][]byte{
+		"foo": []byte("1"),
+		"bar": []byte("2"),
+		"baz": []byte("3"),
+	})
+	require.NoError(t, err)
 
-	iterator := storeIterator{store: store}
+	iterator := NewIterator(func(it storage.Iterator) {
+		store.AscendRange("bar", "foo", it)
+	})
 
 	kv, ok := iterator.Next()
+	require.True(t, ok)
+	require.Equal(t, &KeyValue{Key: "bar", Value: []byte("2")}, kv)
+
+	kv, ok = iterator.Next()
+	require.True(t, ok)
+	require.Equal(t, &KeyValue{Key: "baz", Value: []byte("3")}, kv)
+
+	kv, ok = iterator.Next()
 	require.False(t, ok)
 	require.Nil(t, kv)
 }
