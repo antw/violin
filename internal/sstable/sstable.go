@@ -140,6 +140,14 @@ type Writer struct {
 	source    storage.SerializableStore
 }
 
+func NewWriter(dataFile, indexFile *os.File, source storage.SerializableStore) *Writer {
+	return &Writer{
+		kvFile:    dataFile,
+		indexFile: indexFile,
+		source:    source,
+	}
+}
+
 // Write the contents of the source to a sstable and index on disk. Both the kvFile and indexFile
 // are closed after writing is completed.
 func (w *Writer) Write() error {

@@ -142,6 +142,11 @@ func (s *Store) Delete(key string) error {
 	return s.Set(key, nil)
 }
 
+// Len returns the number of keys in the store.
+func (s *Store) Len() int {
+	return s.index.Len()
+}
+
 // indexKey implements btree.Item for strings.
 type indexKey string
 

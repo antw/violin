@@ -279,7 +279,6 @@ func createTableFiles(t *testing.T, pattern string) (*os.File, *os.File, func())
 }
 
 func createWriter(t *testing.T, source storage.SerializableStore) (Writer, func()) {
-	os.TempDir()
 	dataFile, err := os.CreateTemp("", "sstable_writer_data_test")
 	require.NoError(t, err)
 
