@@ -45,7 +45,7 @@ type ControllerConfig struct {
 	FlushFrequency time.Duration
 }
 
-//var _ storage.ReadableStore = &controller{}
+var _ storage.ReadableStore = &controller{}
 var _ storage.WritableStore = &controller{}
 
 // NewController creates a new controller, which encapsulates zero or more readable stores from disk
@@ -130,6 +130,34 @@ func (c *controller) Close() error {
 	return c.flushActiveStore()
 }
 
+// Ascend calls the iterator for each key/value pair in the store, until the iterator returns false.
+// Tombstoned keys are skipped.
+func (c *controller) Ascend(it storage.Iterator) {
+	c.iterateAggregated(
+		func(store storage.ReadableStore) sstable.CurriedIterable {
+			return store.Ascend
+		},
+		it,
+	)
+}
+
+// AscendRange calls the iterator for every value in the tree within the range
+// [greaterOrEqual, lessThan), until iterator returns false. Tombstoned keys are not included.
+func (c *controller) AscendRange(
+	greaterOrEqual string,
+	lessThan string,
+	it storage.Iterator,
+) {
+	c.iterateAggregated(
+		func(store storage.ReadableStore) sstable.CurriedIterable {
+			return func(innerIt storage.Iterator) {
+				store.AscendRange(greaterOrEqual, lessThan, innerIt)
+			}
+		},
+		it,
+	)
+}
+
 func (c *controller) Delete(key string) error {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -175,6 +203,63 @@ func (c *controller) Set(key string, value []byte) error {
 	}
 
 	return nil
+}
+
+// allStores returns a list of all readable stores, including the active store.
+func (c *controller) allStores() []storage.ReadableStore {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	stores := make([]storage.ReadableStore, len(c.readableStores)+1)
+	for i, store := range c.readableStores {
+		stores[i] = store
+	}
+
+	stores[len(c.readableStores)] = c.activeStore
+
+	return stores
+}
+
+// iterateAggregated allows iterating over key-values pairs in all stores in the controller. Each
+// key is yielded only once, with older values ignored.
+//
+// The `getter` function is called for each readable store in the controller in order to iterate
+// through the values in each controller. The `it` iterator is called for each key-value pair.
+//
+// For example:
+//
+// ```
+// c.iterateAggregated(
+//     func(store storage.ReadableStore) sstable.CurriedIterable {
+//         return store.Ascend
+//     },
+//     func(key string, value []byte) bool {
+//         // Do something with the key-value pair.
+//         return true
+//     },
+// )
+// ```
+func (c *controller) iterateAggregated(
+	getter func(storage.ReadableStore) sstable.CurriedIterable,
+	it storage.Iterator,
+) {
+	stores := c.allStores()
+	fns := make([]sstable.CurriedIterable, len(stores))
+
+	for i, store := range stores {
+		fns[i] = func(store storage.ReadableStore) sstable.CurriedIterable {
+			return getter(store)
+		}(store)
+	}
+
+	iterator := sstable.NewAggregatedIterator(fns)
+	defer iterator.Release()
+
+	for got, ok := iterator.Next(); ok; got, ok = iterator.Next() {
+		if got.GetValue() != nil && !it(got.GetKey(), got.GetValue()) {
+			break
+		}
+	}
 }
 
 // updateEstimatedSize updates the estimated size of the active store based on an update of the

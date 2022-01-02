@@ -199,6 +199,108 @@ func TestLoadController(t *testing.T) {
 	require.Equal(t, "bar", string(val))
 }
 
+func TestController_Ascend(t *testing.T) {
+	older, err := storage.NewStoreWithData(map[string][]byte{
+		"foo": []byte("foo one"),
+		"bar": []byte("bar one"),
+	})
+	require.NoError(t, err)
+
+	newer, err := storage.NewStoreWithData(map[string][]byte{
+		"foo": []byte("foo two"),
+		"baz": []byte("baz two"),
+	})
+	require.NoError(t, err)
+
+	// Tombstoned keys are not included.
+	require.NoError(t, newer.Delete("qux"))
+
+	conf, confTeardown := defaultControllerConfig(t, "ascend")
+	defer confTeardown()
+	c := NewController([]storage.ReadableStore{older, newer}, conf)
+
+	var keys []string
+	var values []string
+
+	c.Ascend(func(key string, value []byte) bool {
+		keys = append(keys, key)
+		values = append(values, string(value))
+
+		return true
+	})
+
+	require.Equal(t, []string{"bar", "baz", "foo"}, keys)
+	require.Equal(t, []string{"bar one", "baz two", "foo two"}, values)
+}
+
+func TestController_Ascend_EarlyExit(t *testing.T) {
+	older, err := storage.NewStoreWithData(map[string][]byte{
+		"foo": []byte("foo one"),
+		"bar": []byte("bar one"),
+	})
+	require.NoError(t, err)
+
+	newer, err := storage.NewStoreWithData(map[string][]byte{
+		"foo": []byte("foo two"),
+		"baz": []byte("baz two"),
+	})
+	require.NoError(t, err)
+
+	// Tombstoned keys are not included.
+	require.NoError(t, newer.Delete("qux"))
+
+	conf, confTeardown := defaultControllerConfig(t, "ascend_early_exit")
+	defer confTeardown()
+	c := NewController([]storage.ReadableStore{older, newer}, conf)
+
+	var keys []string
+	var values []string
+
+	c.Ascend(func(key string, value []byte) bool {
+		keys = append(keys, key)
+		values = append(values, string(value))
+
+		return key < "baz"
+	})
+
+	require.Equal(t, []string{"bar", "baz"}, keys)
+	require.Equal(t, []string{"bar one", "baz two"}, values)
+}
+
+func TestController_AscendRange(t *testing.T) {
+	older, err := storage.NewStoreWithData(map[string][]byte{
+		"foo": []byte("foo one"),
+		"bar": []byte("bar one"),
+	})
+	require.NoError(t, err)
+
+	newer, err := storage.NewStoreWithData(map[string][]byte{
+		"foo": []byte("foo two"),
+		"baz": []byte("baz two"),
+	})
+	require.NoError(t, err)
+
+	// Tombstoned keys are not included.
+	require.NoError(t, newer.Delete("qux"))
+
+	conf, confTeardown := defaultControllerConfig(t, "ascend")
+	defer confTeardown()
+	c := NewController([]storage.ReadableStore{older, newer}, conf)
+
+	var keys []string
+	var values []string
+
+	c.AscendRange("a", "foo", func(key string, value []byte) bool {
+		keys = append(keys, key)
+		values = append(values, string(value))
+
+		return true
+	})
+
+	require.Equal(t, []string{"bar", "baz"}, keys)
+	require.Equal(t, []string{"bar one", "baz two"}, values)
+}
+
 // -------------------------------------------------------------------------------------------------
 
 func defaultControllerConfig(t *testing.T, pattern string) (ControllerConfig, func()) {
