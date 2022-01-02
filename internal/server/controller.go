@@ -228,17 +228,15 @@ func (c *controller) allStores() []storage.ReadableStore {
 //
 // For example:
 //
-// ```
-// c.iterateAggregated(
-//     func(store storage.ReadableStore) sstable.CurriedIterable {
-//         return store.Ascend
-//     },
-//     func(key string, value []byte) bool {
-//         // Do something with the key-value pair.
-//         return true
-//     },
-// )
-// ```
+//     c.iterateAggregated(
+//         func(store storage.ReadableStore) sstable.CurriedIterable {
+//             return store.Ascend
+//         },
+//         func(key string, value []byte) bool {
+//             // Do something with the key-value pair.
+//             return true
+//         },
+//     )
 func (c *controller) iterateAggregated(
 	getter func(storage.ReadableStore) sstable.CurriedIterable,
 	it storage.Iterator,
