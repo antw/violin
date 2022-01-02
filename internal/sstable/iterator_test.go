@@ -149,16 +149,15 @@ func TestAggregatedIterator_TwoStores(t *testing.T) {
 	agg := NewAggregatedIterator(createAscendFns(older, newer))
 	var keys []string
 
-	got, ok := agg.Next()
-	for ok {
+	for got, ok := agg.Next(); ok; got, ok = agg.Next() {
 		keys = append(keys, got.GetKey())
-		got, ok = agg.Next()
 	}
 
 	// Asserts that non-conflicting keys after the conflict are still yielded.
 	require.Equal(t, 3, len(keys))
 	require.Equal(t, []string{"a", "b", "c"}, keys)
 
+	got, ok := agg.Next()
 	require.False(t, ok)
 	require.Nil(t, got)
 }
@@ -183,11 +182,9 @@ func TestAggregatedIterator_TwoConflictingStores(t *testing.T) {
 	var keys []string
 	var vals []string
 
-	got, ok := agg.Next()
-	for ok {
+	for got, ok := agg.Next(); ok; got, ok = agg.Next() {
 		keys = append(keys, got.GetKey())
 		vals = append(vals, string(got.GetValue()))
-		got, ok = agg.Next()
 	}
 
 	// Asserts that non-conflicting keys after the conflict are still yielded.
@@ -195,6 +192,7 @@ func TestAggregatedIterator_TwoConflictingStores(t *testing.T) {
 	require.Equal(t, []string{"a", "b", "c", "d", "e"}, keys)
 	require.Equal(t, []string{"one", "two", "two", "two", "one"}, vals)
 
+	got, ok := agg.Next()
 	require.False(t, ok)
 	require.Nil(t, got)
 }
@@ -220,17 +218,16 @@ func TestAggregatedIterator_TwoStoresNewDeletedKey(t *testing.T) {
 	var keys []string
 	var vals []string
 
-	got, ok := agg.Next()
-	for ok {
+	for got, ok := agg.Next(); ok; got, ok = agg.Next() {
 		keys = append(keys, got.GetKey())
 		vals = append(vals, string(got.GetValue()))
-		got, ok = agg.Next()
 	}
 
 	require.Equal(t, 3, len(keys))
 	require.Equal(t, []string{"a", "b", "c"}, keys)
 	require.Equal(t, []string{"one", "two", ""}, vals)
 
+	got, ok := agg.Next()
 	require.False(t, ok)
 	require.Nil(t, got)
 }
@@ -256,17 +253,16 @@ func TestAggregatedIterator_TwoStoresOldDeletedKey(t *testing.T) {
 	var keys []string
 	var vals []string
 
-	got, ok := agg.Next()
-	for ok {
+	for got, ok := agg.Next(); ok; got, ok = agg.Next() {
 		keys = append(keys, got.GetKey())
 		vals = append(vals, string(got.GetValue()))
-		got, ok = agg.Next()
 	}
 
 	require.Equal(t, 3, len(keys))
 	require.Equal(t, []string{"a", "b", "c"}, keys)
 	require.Equal(t, []string{"one", "two", "two"}, vals)
 
+	got, ok := agg.Next()
 	require.False(t, ok)
 	require.Nil(t, got)
 }
