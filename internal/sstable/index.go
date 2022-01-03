@@ -74,7 +74,7 @@ func verifySchemaVersion(r io.Reader) error {
 	}
 
 	if version != schemaVersion {
-		return fmt.Errorf("unsupported schema version: %d", version)
+		return fmt.Errorf("unsupported index schema version: %d", version)
 	}
 
 	return nil
