@@ -12,14 +12,52 @@ import (
 
 	"github.com/antw/violin/internal/sstable"
 	"github.com/antw/violin/internal/storage"
+	"github.com/antw/violin/internal/wal"
 )
+
+func TestNewController_NonEmpty(t *testing.T) {
+	conf, teardown := defaultControllerConfig(t, "open_controller_with_wal")
+	defer teardown()
+
+	writeSSTable(t, &conf, 1, map[string][]byte{
+		"foo": []byte("bar"),
+	})
+
+	_, err := NewController([]storage.ReadableStore{}, conf)
+	require.ErrorIs(t, err, ErrDirNotEmpty)
+}
+
+func TestOpenController_WithWAL(t *testing.T) {
+	conf, teardown := defaultControllerConfig(t, "open_controller_with_wal")
+	defer teardown()
+
+	wlog, err := wal.NewWithPath(conf.WALPath())
+	require.NoError(t, err)
+
+	require.NoError(t, wlog.Upsert(1, "foo", []byte("bar")))
+	require.NoError(t, wlog.Upsert(2, "baz", []byte("qux")))
+	require.NoError(t, wlog.Delete(3, "baz"))
+	require.NoError(t, wlog.Close())
+
+	c, err := OpenController(conf)
+	require.NoError(t, err)
+
+	val, err := c.Get("foo")
+	require.NoError(t, err)
+	require.Equal(t, "bar", string(val))
+
+	val, err = c.Get("baz")
+	require.ErrorIs(t, err, storage.ErrNoSuchKey)
+}
 
 func TestController_SetGet(t *testing.T) {
 	conf, confTeardown := defaultControllerConfig(t, "set_get")
 	defer confTeardown()
-	c := NewController([]storage.ReadableStore{}, conf)
 
-	err := c.Set("foo", []byte("bar val"))
+	c, err := NewController([]storage.ReadableStore{}, conf)
+	require.NoError(t, err)
+
+	err = c.Set("foo", []byte("bar val"))
 	require.NoError(t, err)
 	require.Equal(t, 10, int(c.estimatedSize))
 
@@ -34,6 +72,26 @@ func TestController_SetGet(t *testing.T) {
 	err = c.Set("baz", []byte("qux"))
 	require.NoError(t, err)
 	require.Equal(t, 16, int(c.estimatedSize))
+}
+
+func TestController_GetDeleted(t *testing.T) {
+	conf, confTeardown := defaultControllerConfig(t, "set_get")
+	defer confTeardown()
+
+	readable := storage.NewStore()
+	require.NoError(t, readable.Delete("foo"))
+
+	c, err := NewController([]storage.ReadableStore{readable}, conf)
+	require.NoError(t, err)
+
+	_, err = c.Get("foo")
+	require.ErrorIs(t, err, storage.ErrNoSuchKey)
+
+	// Add the same deleted key to the active store.
+	require.NoError(t, c.Delete("foo"))
+
+	_, err = c.Get("foo")
+	require.ErrorIs(t, err, storage.ErrNoSuchKey)
 }
 
 func TestController_GetFromReadable(t *testing.T) {
@@ -51,7 +109,9 @@ func TestController_GetFromReadable(t *testing.T) {
 
 	conf, confTeardown := defaultControllerConfig(t, "get_from_readable")
 	defer confTeardown()
-	c := NewController([]storage.ReadableStore{older, newer}, conf)
+
+	c, err := NewController([]storage.ReadableStore{older, newer}, conf)
+	require.NoError(t, err)
 
 	// New value in newer store
 	foo, err := c.Get("foo")
@@ -72,9 +132,11 @@ func TestController_GetFromReadable(t *testing.T) {
 func TestController_Delete(t *testing.T) {
 	conf, confTeardown := defaultControllerConfig(t, "delete")
 	defer confTeardown()
-	c := NewController([]storage.ReadableStore{}, conf)
 
-	err := c.Set("foo", []byte("bar val"))
+	c, err := NewController([]storage.ReadableStore{}, conf)
+	require.NoError(t, err)
+
+	err = c.Set("foo", []byte("bar val"))
 	require.NoError(t, err)
 
 	err = c.Set("baz", []byte("qux val"))
@@ -102,14 +164,16 @@ func TestController_flushAuto(t *testing.T) {
 
 	// Tests that the controller flushes the active store when the estimated store size exceeds the
 	// configured value.
-	c := NewController([]storage.ReadableStore{}, conf)
+	c, err := NewController([]storage.ReadableStore{}, conf)
+	require.NoError(t, err)
+
 	c.Start()
 	defer func() { _ = c.Close() }()
 
 	// Start with no readable stores.
 	require.Equal(t, 0, len(c.readableStores))
 
-	err := c.Set("foo", []byte("bar"))
+	err = c.Set("foo", []byte("bar"))
 	require.NoError(t, err)
 
 	require.Eventually(t, func() bool {
@@ -122,12 +186,13 @@ func TestController_flushAuto(t *testing.T) {
 func TestController_flushActiveStore(t *testing.T) {
 	conf, confTeardown := defaultControllerConfig(t, "flush")
 	defer confTeardown()
-	c := NewController([]storage.ReadableStore{}, conf)
+	c, err := NewController([]storage.ReadableStore{}, conf)
+	require.NoError(t, err)
 
 	// Start with no readable stores.
 	require.Equal(t, 0, len(c.readableStores))
 
-	err := c.Set("foo", []byte("bar"))
+	err = c.Set("foo", []byte("bar"))
 	require.NoError(t, err)
 
 	err = c.flushActiveStore()
@@ -155,7 +220,7 @@ func TestController_flushActiveStore_Overwrite(t *testing.T) {
 
 	// Tests that a memory store which is flushed to an SSTable takes precedence over a value in an
 	// existing table.
-	c, err := LoadController(conf)
+	c, err := OpenController(conf)
 	require.NoError(t, err)
 
 	// Start with one readable store.
@@ -191,7 +256,7 @@ func TestLoadController(t *testing.T) {
 	})
 	defer teardown()
 
-	c, err := LoadController(config)
+	c, err := OpenController(config)
 	require.NoError(t, err)
 
 	val, err := c.Get("foo")
@@ -217,7 +282,9 @@ func TestController_Ascend(t *testing.T) {
 
 	conf, confTeardown := defaultControllerConfig(t, "ascend")
 	defer confTeardown()
-	c := NewController([]storage.ReadableStore{older, newer}, conf)
+
+	c, err := NewController([]storage.ReadableStore{older, newer}, conf)
+	require.NoError(t, err)
 
 	var keys []string
 	var values []string
@@ -251,7 +318,8 @@ func TestController_Ascend_EarlyExit(t *testing.T) {
 
 	conf, confTeardown := defaultControllerConfig(t, "ascend_early_exit")
 	defer confTeardown()
-	c := NewController([]storage.ReadableStore{older, newer}, conf)
+	c, err := NewController([]storage.ReadableStore{older, newer}, conf)
+	require.NoError(t, err)
 
 	var keys []string
 	var values []string
@@ -285,7 +353,9 @@ func TestController_AscendRange(t *testing.T) {
 
 	conf, confTeardown := defaultControllerConfig(t, "ascend")
 	defer confTeardown()
-	c := NewController([]storage.ReadableStore{older, newer}, conf)
+
+	c, err := NewController([]storage.ReadableStore{older, newer}, conf)
+	require.NoError(t, err)
 
 	var keys []string
 	var values []string

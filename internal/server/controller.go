@@ -16,12 +16,19 @@ import (
 
 	"github.com/antw/violin/internal/sstable"
 	"github.com/antw/violin/internal/storage"
+	"github.com/antw/violin/internal/wal"
+)
+
+var (
+	ErrDirNotEmpty = errors.New("controller: cannot create new controller in non-empty directory")
 )
 
 type controller struct {
 	activeStore    *storage.Store
 	readableStores []storage.ReadableStore
 	config         ControllerConfig
+
+	wal *wal.WAL
 
 	// Contains a *rough* estimate of the number of bytes stored in the active store.
 	estimatedSize int64
@@ -45,6 +52,10 @@ type ControllerConfig struct {
 	FlushFrequency time.Duration
 }
 
+func (c *ControllerConfig) WALPath() string {
+	return filepath.Join(c.Dir, "wal.log")
+}
+
 var _ storage.ReadableStore = &controller{}
 var _ storage.WritableStore = &controller{}
 
@@ -53,26 +64,33 @@ var _ storage.WritableStore = &controller{}
 // and will periodically write its data to an SSTable, replacing the active store with a new, empty
 // one.
 //
+// NewController will error if the given config.Dir contains any files.
+//
 // This takes ownership of the given readableStores, and these stores should not be interacted with
 // again by the caller.
-func NewController(readableStores []storage.ReadableStore, config ControllerConfig) *controller {
-	if config.FlushBytes == 0 {
-		config.FlushBytes = 1024 * 1024 * 64
+func NewController(
+	readableStores []storage.ReadableStore,
+	config ControllerConfig,
+) (*controller, error) {
+	if filelist, err := ioutil.ReadDir(config.Dir); err != nil {
+		return nil, err
+	} else if len(filelist) > 0 {
+		return nil, ErrDirNotEmpty
 	}
 
-	if config.FlushFrequency == 0 {
-		config.FlushFrequency = 5 * time.Second
+	wal, err := wal.NewWithPath(config.WALPath())
+	if err != nil {
+		return nil, err
 	}
 
-	return &controller{
-		activeStore:    storage.NewStore(),
-		readableStores: readableStores,
-		config:         config,
-		close:          make(chan struct{}),
-	}
+	return buildController(storage.NewStore(), readableStores, config, wal)
 }
 
-func LoadController(config ControllerConfig) (*controller, error) {
+// OpenController creates a new controller using the files in the config.Dir.
+//
+// This includes reading any existing WAL and applying them to the active store, as well as loading
+// the indicies for any SSTables.
+func OpenController(config ControllerConfig) (*controller, error) {
 	stores := make([]storage.ReadableStore, 0)
 
 	for _, path := range listIndexFiles(config.Dir) {
@@ -87,7 +105,38 @@ func LoadController(config ControllerConfig) (*controller, error) {
 		stores = append(stores, sst)
 	}
 
-	return NewController(stores, config), nil
+	wlog, store, err := walAndStore(config.WALPath())
+	if err != nil {
+		return nil, err
+	}
+
+	return buildController(store, stores, config, wlog)
+}
+
+// buildController creates a new controller instance with the given stores, config, and WAL.
+func buildController(
+	activeStore *storage.Store,
+	readableStores []storage.ReadableStore,
+	config ControllerConfig,
+	wlog *wal.WAL,
+) (*controller, error) {
+	os.MkdirAll(config.Dir, 0700)
+
+	if config.FlushBytes == 0 {
+		config.FlushBytes = 1024 * 1024 * 64
+	}
+
+	if config.FlushFrequency == 0 {
+		config.FlushFrequency = 5 * time.Second
+	}
+
+	return &controller{
+		activeStore:    activeStore,
+		readableStores: readableStores,
+		config:         config,
+		wal:            wlog,
+		close:          make(chan struct{}),
+	}, nil
 }
 
 // Returns a sorted list of all index file names in the given directory.
@@ -126,6 +175,10 @@ func (c *controller) Start() {
 
 func (c *controller) Close() error {
 	c.close <- struct{}{}
+
+	if err := c.wal.Close(); err != nil {
+		return err
+	}
 
 	return c.flushActiveStore()
 }
@@ -176,6 +229,9 @@ func (c *controller) Get(key string) ([]byte, error) {
 	defer c.mu.RUnlock()
 
 	if val, err := c.activeStore.Get(key); err == nil {
+		if val == nil {
+			return nil, storage.ErrNoSuchKey
+		}
 		return val, nil
 	} else if !errors.Is(err, storage.ErrNoSuchKey) {
 		return nil, err
@@ -183,6 +239,9 @@ func (c *controller) Get(key string) ([]byte, error) {
 
 	for i := len(c.readableStores) - 1; i >= 0; i-- {
 		if val, err := c.readableStores[i].Get(key); err == nil {
+			if val == nil {
+				return nil, storage.ErrNoSuchKey
+			}
 			return val, nil
 		} else if !errors.Is(err, storage.ErrNoSuchKey) {
 			return nil, err
@@ -357,4 +416,41 @@ func (c *controller) flushActiveStore() error {
 	log.Printf("flushed active store to %s and %s", dataFile.Name(), indexFile.Name())
 
 	return nil
+}
+
+// openWAL takes a path to a WAL file and returns the WAL object, and a store containing any
+// updates that were written to the WAL.
+func openWAL(path string) (*wal.WAL, *storage.Store, error) {
+	store := storage.NewStore()
+
+	wlog, err := wal.OpenWithPath(path, func(rec *wal.Record) {
+		if up := rec.GetUpsert(); up != nil {
+			store.Set(up.GetKey(), up.GetValue())
+		} else if del := rec.GetDelete(); del != nil {
+			store.Delete(del.GetKey())
+		}
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return wlog, store, nil
+}
+
+// walAndStore takes a path to a possible WAL file and returns the WAL and store representing the
+// entried contained. If no file exists, a new WAL and store is created and returned.
+func walAndStore(path string) (*wal.WAL, *storage.Store, error) {
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		// No WAL exists, so create a new one.
+		log, err := wal.NewWithPath(path)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		return log, storage.NewStore(), nil
+	} else if err != nil {
+		return nil, nil, err
+	}
+
+	return openWAL(path)
 }
