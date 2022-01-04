@@ -50,6 +50,37 @@ func (r *Iterator) Next() (*Record, error) {
 	return rec, nil
 }
 
+// Drain advances the iterator to the end of the WAL, returning the txid of the last record.
+func (r *Iterator) Drain() (uint64, error) {
+	lastId := uint64(0)
+	for {
+		rec, err := r.Next()
+		if err != nil {
+			if errors.Is(err, iterator.Done) {
+				return lastId, nil
+			}
+			return 0, err
+		}
+		lastId = rec.GetTxid()
+	}
+}
+
+// ForEach calls the given function for each remaining item in the iterator. An error is returned
+// immediately if one occurs while reading a record.
+func (r *Iterator) ForEach(fn func(rec *Record)) error {
+	for {
+		rec, err := r.Next()
+		if err != nil {
+			if errors.Is(err, iterator.Done) {
+				return nil
+			}
+			return err
+		}
+
+		fn(rec)
+	}
+}
+
 // SkipTo advances the iterator to the first record whose transaction ID is equal to or higher than
 // txid.
 func (r *Iterator) SkipTo(txid uint64) error {
