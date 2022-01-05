@@ -35,25 +35,26 @@ type Config struct {
 		raft.Config
 		StreamLayer *StreamLayer
 		Bootstrap   bool
+		DataDir     string
 	}
 }
 
 type DistributedStore struct {
 	config Config
-	store  *storage.Store
+	store  store
 	raft   *raft.Raft
 }
 
 var _ storage.ReadableStore = (*DistributedStore)(nil)
 var _ storage.WritableStore = (*DistributedStore)(nil)
 
-func NewDistributedStore(dataDir string, config Config) (*DistributedStore, error) {
+func NewDistributedStore(store store, config Config) (*DistributedStore, error) {
 	ds := &DistributedStore{
-		store:  storage.NewStore(),
+		store:  store,
 		config: config,
 	}
 
-	if err := ds.setupRaft(dataDir); err != nil {
+	if err := ds.setupRaft(config.Raft.DataDir); err != nil {
 		return nil, err
 	}
 
@@ -272,7 +273,7 @@ func (ds *DistributedStore) Close() error {
 var _ raft.FSM = (*fsm)(nil)
 
 type fsm struct {
-	store *storage.Store
+	store store
 }
 
 func (f *fsm) Apply(record *raft.Log) interface{} {

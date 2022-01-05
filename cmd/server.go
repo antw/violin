@@ -60,7 +60,7 @@ var serverCmd = &cobra.Command{
 		config := agent.Config{
 			BindAddr:       bindAddr,
 			Bootstrap:      bootstrap,
-			DataDir:        dataDir,
+			BaseDir:        dataDir,
 			NodeName:       nodeName,
 			RPCPort:        rpcPort,
 			StartJoinAddrs: startAddrs,

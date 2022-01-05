@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -111,10 +112,13 @@ func createDistributedStores(t *testing.T, count int) ([]*DistributedStore, func
 
 	for i := 0; i < count; i++ {
 		fmt.Println(i)
-		dataDir, err := ioutil.TempDir("", "distributed-store-test")
+		baseDir, err := ioutil.TempDir("", "distributed-store-test")
 		require.NoError(t, err)
 
-		dirs = append(dirs, dataDir)
+		os.MkdirAll(filepath.Join(baseDir, "raft"), 0700)
+		os.MkdirAll(filepath.Join(baseDir, "data"), 0700)
+
+		dirs = append(dirs, baseDir)
 
 		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", ports[i]))
 		require.NoError(t, err)
@@ -126,12 +130,16 @@ func createDistributedStores(t *testing.T, count int) ([]*DistributedStore, func
 		config.Raft.ElectionTimeout = 500 * time.Millisecond
 		config.Raft.LeaderLeaseTimeout = 500 * time.Millisecond
 		config.Raft.CommitTimeout = 5 * time.Millisecond
+		config.Raft.DataDir = filepath.Join(baseDir, "raft")
 
 		if i == 0 {
 			config.Raft.Bootstrap = true
 		}
 
-		store, err := NewDistributedStore(dataDir, config)
+		controller, err := OpenController(ControllerConfig{Dir: filepath.Join(baseDir, "data")})
+		require.NoError(t, err)
+
+		store, err := NewDistributedStore(controller, config)
 		require.NoError(t, err)
 
 		if i == 0 {

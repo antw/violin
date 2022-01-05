@@ -37,7 +37,7 @@ func TestAgent(t *testing.T) {
 			StartJoinAddrs: startJoinAddrs,
 			BindAddr:       bindAddr,
 			RPCPort:        ports[1],
-			DataDir:        dataDir,
+			BaseDir:        dataDir,
 		})
 		require.NoError(t, err)
 
@@ -48,7 +48,7 @@ func TestAgent(t *testing.T) {
 		for _, agent := range agents {
 			err := agent.Shutdown()
 			require.NoError(t, err)
-			require.NoError(t, os.RemoveAll(agent.Config.DataDir))
+			require.NoError(t, os.RemoveAll(agent.Config.BaseDir))
 		}
 	}()
 

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -30,12 +32,20 @@ type Agent struct {
 }
 
 type Config struct {
-	DataDir        string
+	BaseDir        string
 	BindAddr       string
 	RPCPort        int
 	NodeName       string
 	StartJoinAddrs []string
 	Bootstrap      bool
+}
+
+func (c *Config) RaftDir() string {
+	return filepath.Join(c.BaseDir, "raft")
+}
+
+func (c *Config) DataDir() string {
+	return filepath.Join(c.BaseDir, "data")
 }
 
 func (c Config) RPCAddr() (string, error) {
@@ -95,14 +105,23 @@ func (a *Agent) setupStore() error {
 		return bytes.Equal(b, []byte{server.RaftRPC})
 	})
 
+	os.MkdirAll(a.Config.RaftDir(), 0700)
+	os.MkdirAll(a.Config.DataDir(), 0700)
+
 	storeConfig := server.Config{}
 	storeConfig.Raft.StreamLayer = server.NewStreamLayer(raftListener)
 	storeConfig.Raft.LocalID = raft.ServerID(a.Config.NodeName)
 	storeConfig.Raft.Bootstrap = a.Config.Bootstrap
+	storeConfig.Raft.DataDir = a.Config.RaftDir()
 
 	var err error
 
-	a.store, err = server.NewDistributedStore(a.Config.DataDir, storeConfig)
+	controller, err := server.OpenController(server.ControllerConfig{Dir: a.Config.DataDir()})
+	if err != nil {
+		return err
+	}
+
+	a.store, err = server.NewDistributedStore(controller, storeConfig)
 	if err != nil {
 		return err
 	}
