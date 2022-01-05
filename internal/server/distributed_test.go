@@ -18,7 +18,8 @@ import (
 )
 
 func TestMultipleNodes(t *testing.T) {
-	stores := createDistributedStores(t, 3)
+	stores, teardown := createDistributedStores(t, 3)
+	defer teardown()
 
 	kvs := []struct {
 		key   string
@@ -79,7 +80,8 @@ func TestMultipleNodes(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
-	stores := createDistributedStores(t, 3)
+	stores, teardown := createDistributedStores(t, 3)
+	defer teardown()
 
 	err := stores[0].Set("foo", []byte("bar"))
 	require.NoError(t, err)
@@ -94,29 +96,25 @@ func TestDelete(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		val, err := stores[1].Get("foo")
-		require.NoError(t, err)
-
-		return val == nil
+		return errors.Is(err, storage.ErrNoSuchKey) && val == nil
 	}, 500*time.Millisecond, 25*time.Millisecond)
 }
 
 // -------------------------------------------------------------------------------------------------
 
-func createDistributedStores(t *testing.T, count int) []*DistributedStore {
+func createDistributedStores(t *testing.T, count int) ([]*DistributedStore, func()) {
 	var stores []*DistributedStore
-	nodeCount := 3
+	var dirs []string
 
-	ports, err := freeport.GetFreePorts(nodeCount)
+	ports, err := freeport.GetFreePorts(count)
 	require.NoError(t, err)
 
-	for i := 0; i < nodeCount; i++ {
+	for i := 0; i < count; i++ {
 		fmt.Println(i)
 		dataDir, err := ioutil.TempDir("", "distributed-store-test")
 		require.NoError(t, err)
 
-		defer func(dir string) {
-			_ = os.RemoveAll(dir)
-		}(dataDir)
+		dirs = append(dirs, dataDir)
 
 		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", ports[i]))
 		require.NoError(t, err)
@@ -149,5 +147,9 @@ func createDistributedStores(t *testing.T, count int) []*DistributedStore {
 		stores = append(stores, store)
 	}
 
-	return stores
+	return stores, func() {
+		for _, dir := range dirs {
+			_ = os.RemoveAll(dir)
+		}
+	}
 }
