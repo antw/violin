@@ -1,4 +1,4 @@
-package storage
+package server
 
 import (
 	"bytes"
@@ -16,6 +16,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/antw/violin/api"
+	"github.com/antw/violin/internal/storage"
 	"github.com/antw/violin/internal/wal"
 )
 
@@ -39,16 +40,16 @@ type Config struct {
 
 type DistributedStore struct {
 	config Config
-	store  *Store
+	store  *storage.Store
 	raft   *raft.Raft
 }
 
-var _ ReadableStore = (*DistributedStore)(nil)
-var _ WritableStore = (*DistributedStore)(nil)
+var _ storage.ReadableStore = (*DistributedStore)(nil)
+var _ storage.WritableStore = (*DistributedStore)(nil)
 
 func NewDistributedStore(dataDir string, config Config) (*DistributedStore, error) {
 	ds := &DistributedStore{
-		store:  NewStore(),
+		store:  storage.NewStore(),
 		config: config,
 	}
 
@@ -145,13 +146,13 @@ func (ds *DistributedStore) setupRaft(dataDir string) error {
 
 // Ascend iterates through each key in the index in ascending order, yielding to the function the
 // key and corresponding position of the value in the data file.
-func (ds *DistributedStore) Ascend(fn Iterator) {
+func (ds *DistributedStore) Ascend(fn storage.Iterator) {
 	ds.store.Ascend(fn)
 }
 
 // AscendRange calls the iterator for every value in the tree within the range
 // [greaterOrEqual, lessThan), until iterator returns false.
-func (ds *DistributedStore) AscendRange(greaterOrEqual, lessThan string, fn Iterator) {
+func (ds *DistributedStore) AscendRange(greaterOrEqual, lessThan string, fn storage.Iterator) {
 	ds.store.AscendRange(greaterOrEqual, lessThan, fn)
 }
 
@@ -271,7 +272,7 @@ func (ds *DistributedStore) Close() error {
 var _ raft.FSM = (*fsm)(nil)
 
 type fsm struct {
-	store *Store
+	store *storage.Store
 }
 
 func (f *fsm) Apply(record *raft.Log) interface{} {
@@ -307,10 +308,8 @@ func (f *fsm) Snapshot() (raft.FSMSnapshot, error) {
 	var data map[string][]byte
 
 	// Convert the sync.Map into a map which can be encoded.
-	f.store.data.Range(func(key, value interface{}) bool {
-		if valueBytes, ok := value.([]byte); ok {
-			data[fmt.Sprint(key)] = valueBytes
-		}
+	f.store.Ascend(func(key string, value []byte) bool {
+		data[key] = value
 		return true
 	})
 

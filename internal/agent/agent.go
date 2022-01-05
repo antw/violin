@@ -14,14 +14,13 @@ import (
 
 	"github.com/antw/violin/internal/discovery"
 	"github.com/antw/violin/internal/server"
-	"github.com/antw/violin/internal/storage"
 )
 
 type Agent struct {
 	Config
 
 	mux        cmux.CMux
-	store      *storage.DistributedStore
+	store      *server.DistributedStore
 	server     *grpc.Server
 	membership *discovery.Membership
 
@@ -93,17 +92,17 @@ func (a *Agent) setupStore() error {
 		if _, err := reader.Read(b); err != nil {
 			return false
 		}
-		return bytes.Equal(b, []byte{storage.RaftRPC})
+		return bytes.Equal(b, []byte{server.RaftRPC})
 	})
 
-	storeConfig := storage.Config{}
-	storeConfig.Raft.StreamLayer = storage.NewStreamLayer(raftListener)
+	storeConfig := server.Config{}
+	storeConfig.Raft.StreamLayer = server.NewStreamLayer(raftListener)
 	storeConfig.Raft.LocalID = raft.ServerID(a.Config.NodeName)
 	storeConfig.Raft.Bootstrap = a.Config.Bootstrap
 
 	var err error
 
-	a.store, err = storage.NewDistributedStore(a.Config.DataDir, storeConfig)
+	a.store, err = server.NewDistributedStore(a.Config.DataDir, storeConfig)
 	if err != nil {
 		return err
 	}

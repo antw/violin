@@ -1,4 +1,4 @@
-package storage
+package server
 
 import (
 	"bytes"
@@ -13,6 +13,8 @@ import (
 	"github.com/hashicorp/raft"
 	"github.com/phayes/freeport"
 	"github.com/stretchr/testify/require"
+
+	"github.com/antw/violin/internal/storage"
 )
 
 func TestMultipleNodes(t *testing.T) {
@@ -32,7 +34,7 @@ func TestMultipleNodes(t *testing.T) {
 		require.Eventually(t, func() bool {
 			for j := 0; j < len(stores); j++ {
 				value, err := stores[j].Get(kv.key)
-				if errors.Is(err, ErrNoSuchKey) {
+				if errors.Is(err, storage.ErrNoSuchKey) {
 					// Ignore missing keys which haven't been replicated yet.
 					return false
 				}
@@ -67,7 +69,7 @@ func TestMultipleNodes(t *testing.T) {
 
 	// Test that disconnected node doesn't receive the KV.
 	value, err := stores[1].Get("foo2")
-	require.ErrorIs(t, err, ErrNoSuchKey)
+	require.ErrorIs(t, err, storage.ErrNoSuchKey)
 	require.Nil(t, value)
 
 	// Test that the node which is still connected gets the KV.
