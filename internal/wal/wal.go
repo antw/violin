@@ -88,15 +88,25 @@ func OpenWithPath(path string, fn func(rec *Record)) (*WAL, error) {
 	return Open(f, fn)
 }
 
+// MakeUpsert creates a new wal.Record representing an insertion or update.
+func MakeUpsert(txid uint64, key string, value []byte) *Record {
+	return &Record{Txid: txid, Record: &Record_Upsert{&Upsert{Key: key, Value: value}}}
+}
+
+// MakeUpsert creates a new wal.Record representing a deletion.
+func MakeDelete(txid uint64, key string) *Record {
+	return &Record{Txid: txid, Record: &Record_Delete{&Delete{Key: key}}}
+}
+
 // Upsert writes a new entry to the WAL that represents the insertion of a new key and value, or an
 // update of an existing key.
 func (w *WAL) Upsert(txid uint64, key string, value []byte) error {
-	return w.write(&Record{Txid: txid, Record: &Record_Upsert{&Upsert{Key: key, Value: value}}})
+	return w.write(MakeUpsert(txid, key, value))
 }
 
 // Delete writes a new entry to the WAL representing the deletion of a key
 func (w *WAL) Delete(txid uint64, key string) error {
-	return w.write(&Record{Txid: txid, Record: &Record_Delete{&Delete{Key: key}}})
+	return w.write(MakeDelete(txid, key))
 }
 
 func (w *WAL) Close() error {

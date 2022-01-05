@@ -16,6 +16,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/antw/violin/api"
+	"github.com/antw/violin/internal/wal"
 )
 
 const (
@@ -156,7 +157,7 @@ func (ds *DistributedStore) AscendRange(greaterOrEqual, lessThan string, fn Iter
 
 // Set appends the KV to the Raft log.
 func (ds *DistributedStore) Set(key string, value []byte) error {
-	_, err := ds.apply(&api.SetRequest{Register: &api.KV{Key: key, Value: value}})
+	_, err := ds.apply(wal.MakeUpsert(0, key, value))
 	return err
 }
 
@@ -196,7 +197,8 @@ func (ds *DistributedStore) Get(key string) (value []byte, err error) {
 
 // Delete removes a key from the store.
 func (ds *DistributedStore) Delete(key string) error {
-	return ds.store.Delete(key)
+	_, err := ds.apply(wal.MakeDelete(0, key))
+	return err
 }
 
 // Join adds a node to the Raft cluster.
@@ -273,16 +275,25 @@ type fsm struct {
 }
 
 func (f *fsm) Apply(record *raft.Log) interface{} {
-	var req api.SetRequest
+	var req wal.Record
 
 	err := proto.Unmarshal(record.Data, &req)
 	if err != nil {
 		return err
 	}
 
-	err = f.store.Set(req.GetRegister().GetKey(), req.GetRegister().GetValue())
-	if err != nil {
-		return err
+	if up := req.GetUpsert(); up != nil {
+		err = f.store.Set(up.GetKey(), up.GetValue())
+		if err != nil {
+			return err
+		}
+	} else if del := req.GetDelete(); del != nil {
+		err = f.store.Delete(del.GetKey())
+		if err != nil {
+			return err
+		}
+	} else {
+		return fmt.Errorf("unknown record type")
 	}
 
 	return &api.SetResponse{}

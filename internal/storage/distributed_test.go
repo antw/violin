@@ -16,6 +16,91 @@ import (
 )
 
 func TestMultipleNodes(t *testing.T) {
+	stores := createDistributedStores(t, 3)
+
+	kvs := []struct {
+		key   string
+		value []byte
+	}{
+		{key: "foo", value: []byte("bar")},
+		{key: "baz", value: []byte("qux")},
+	}
+	for _, kv := range kvs {
+		err := stores[0].Set(kv.key, kv.value)
+		require.NoError(t, err)
+
+		require.Eventually(t, func() bool {
+			for j := 0; j < len(stores); j++ {
+				value, err := stores[j].Get(kv.key)
+				if errors.Is(err, ErrNoSuchKey) {
+					// Ignore missing keys which haven't been replicated yet.
+					return false
+				}
+
+				require.NoError(t, err)
+
+				if !bytes.Equal(kv.value, value) {
+					return false
+				}
+			}
+
+			return true
+		}, 500*time.Millisecond, 50*time.Millisecond)
+	}
+
+	err := stores[0].Leave("1")
+	require.NoError(t, err)
+
+	time.Sleep(50 * time.Millisecond)
+
+	err = stores[0].Set("foo2", []byte("bar2"))
+	require.NoError(t, err)
+
+	// No writes to the follower.
+	err = stores[1].Set("foo3", []byte("bar"))
+	require.Error(t, err)
+
+	err = stores[1].Delete("foo3")
+	require.Error(t, err)
+
+	time.Sleep(50 * time.Millisecond)
+
+	// Test that disconnected node doesn't receive the KV.
+	value, err := stores[1].Get("foo2")
+	require.ErrorIs(t, err, ErrNoSuchKey)
+	require.Nil(t, value)
+
+	// Test that the node which is still connected gets the KV.
+	value, err = stores[2].Get("foo2")
+	require.NoError(t, err)
+	require.Equal(t, []byte("bar2"), value)
+}
+
+func TestDelete(t *testing.T) {
+	stores := createDistributedStores(t, 3)
+
+	err := stores[0].Set("foo", []byte("bar"))
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		_, err := stores[1].Get("foo")
+		return err == nil
+	}, 500*time.Millisecond, 25*time.Millisecond)
+
+	err = stores[0].Delete("foo")
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		val, err := stores[1].Get("foo")
+		require.NoError(t, err)
+
+		return val == nil
+	}, 500*time.Millisecond, 25*time.Millisecond)
+}
+
+// -------------------------------------------------------------------------------------------------
+
+func createDistributedStores(t *testing.T, count int) []*DistributedStore {
 	var stores []*DistributedStore
 	nodeCount := 3
 
@@ -62,53 +147,5 @@ func TestMultipleNodes(t *testing.T) {
 		stores = append(stores, store)
 	}
 
-	kvs := []struct {
-		key   string
-		value []byte
-	}{
-		{key: "foo", value: []byte("bar")},
-		{key: "baz", value: []byte("qux")},
-	}
-	for _, kv := range kvs {
-		err := stores[0].Set(kv.key, kv.value)
-		require.NoError(t, err)
-
-		require.Eventually(t, func() bool {
-			for j := 0; j < nodeCount; j++ {
-				value, err := stores[j].Get(kv.key)
-				if errors.Is(err, ErrNoSuchKey) {
-					// Ignore missing keys which haven't been replicated yet.
-					return false
-				}
-
-				require.NoError(t, err)
-
-				if !bytes.Equal(kv.value, value) {
-					return false
-				}
-			}
-
-			return true
-		}, 500*time.Millisecond, 50*time.Millisecond)
-	}
-
-	err = stores[0].Leave("1")
-	require.NoError(t, err)
-
-	time.Sleep(50 * time.Millisecond)
-
-	err = stores[0].Set("foo2", []byte("bar2"))
-	require.NoError(t, err)
-
-	time.Sleep(50 * time.Millisecond)
-
-	// Test that disconnected node doesn't receive the KV.
-	value, err := stores[1].Get("foo2")
-	require.ErrorIs(t, err, ErrNoSuchKey)
-	require.Nil(t, value)
-
-	// Test that the node which is still connected gets the KV.
-	value, err = stores[2].Get("foo2")
-	require.NoError(t, err)
-	require.Equal(t, []byte("bar2"), value)
+	return stores
 }
