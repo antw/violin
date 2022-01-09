@@ -30,6 +30,9 @@ type controller struct {
 
 	wal *wal.WAL
 
+	// Current transaction ID.
+	txid uint64
+
 	// Contains a *rough* estimate of the number of bytes stored in the active store.
 	estimatedSize int64
 
@@ -135,6 +138,7 @@ func buildController(
 		readableStores: readableStores,
 		config:         config,
 		wal:            wlog,
+		txid:           wlog.PrevTxid(),
 		close:          make(chan struct{}),
 	}, nil
 }
@@ -215,6 +219,10 @@ func (c *controller) Delete(key string) error {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
+	if err := c.wal.Delete(atomic.AddUint64(&c.txid, 1), key); err != nil {
+		return err
+	}
+
 	c.updateEstimatedSize(key, 0)
 
 	if err := c.activeStore.Delete(key); err != nil {
@@ -254,6 +262,10 @@ func (c *controller) Get(key string) ([]byte, error) {
 func (c *controller) Set(key string, value []byte) error {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+
+	if err := c.wal.Upsert(atomic.AddUint64(&c.txid, 1), key, value); err != nil {
+		return err
+	}
 
 	c.updateEstimatedSize(key, int64(len(value)))
 

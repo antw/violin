@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"os"
+	sync "sync"
 
 	"google.golang.org/protobuf/proto"
 )
@@ -20,6 +21,7 @@ type WAL struct {
 	file   *os.File
 	writer *bufio.Writer
 	latest uint64
+	mu     sync.Mutex
 }
 
 // NewWAL creates a new write-ahead log and requires that the given file be empty. If the file may
@@ -117,8 +119,17 @@ func (w *WAL) Close() error {
 	return w.file.Close()
 }
 
+// PrevTxid returns the ID of the most recent transaction that was written to the WAL. Returns 0
+// when the log is empty.
+func (w *WAL) PrevTxid() uint64 {
+	return w.latest
+}
+
 // write adds a record to the WAL.
 func (w *WAL) write(r *Record) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
 	if r.GetTxid() != w.latest+1 {
 		return ErrCausalityViolation
 	}
